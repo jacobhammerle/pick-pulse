@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "PickPulse",
+    "slug": "pickpulse",
+    "owner": "sunrise-solutions",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "pickpulse",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0D0D17",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "dev.expo.pickpulse",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.expo.pickpulse",
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0D17",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0D0D17",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "21628f3c-5d47-43de-ae01-da5361d68604"
+      }
+    }
+  }
+}
