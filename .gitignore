@@ -36,5 +36,11 @@ yarn-error.*
 .env*.local
 .env
 
+# EAS Simulator session token, written by eas-cli
+.env.eas-simulator
+
+# Agent verification artifacts (screenshots, video, generated site)
+evidence/
+
 # typescript
 *.tsbuildinfo

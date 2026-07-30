@@ -1,0 +1,29 @@
+name: Agent iterate
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: The pull request number to iterate on
+        type: string
+        required: true
+      instruction:
+        description: The change the reviewer asked for
+        type: string
+        required: true
+
+jobs:
+  iterate_pr:
+    name: Apply the requested change
+    type: custom
+    environment: production
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Apply the change and push
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          INSTRUCTION: ${{ inputs.instruction }}
+        run: bash scripts/agent/iterate-pr.sh

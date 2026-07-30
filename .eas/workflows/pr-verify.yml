@@ -1,0 +1,92 @@
+name: PR verify
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  fingerprint:
+    name: Fingerprint the project
+    type: fingerprint
+
+  find_simulator_build:
+    name: Find a matching simulator build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: preview-simulator
+      simulator: true
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  repack_simulator_build:
+    name: Repack the cached simulator build
+    needs: [find_simulator_build]
+    if: ${{ needs.find_simulator_build.outputs.build_id }}
+    type: repack
+    params:
+      build_id: ${{ needs.find_simulator_build.outputs.build_id }}
+      profile: preview-simulator
+      js_bundle_only: true
+
+  build_simulator_build:
+    name: Build a new simulator app
+    needs: [find_simulator_build]
+    if: ${{ !needs.find_simulator_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview-simulator
+
+  verify_on_simulator:
+    name: Verify on an EAS cloud simulator
+    after: [repack_simulator_build, build_simulator_build]
+    type: custom
+    environment: preview
+    outputs:
+      evidence_url: ${{ steps.verify.outputs.evidence_url }}
+      verdict: ${{ steps.verify.outputs.verdict }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Drive the app and collect evidence
+        id: verify
+        env:
+          BUILD_ID: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/agent/verify-on-simulator.sh
+
+  publish_pr_update:
+    name: Publish an update to the pr channel
+    needs: [verify_on_simulator]
+    type: update
+    environment: preview
+    params:
+      platform: ios
+      channel: pr-${{ github.event.pull_request.number }}
+      message: PR #${{ github.event.pull_request.number }} preview
+
+  comment_on_pr:
+    name: Comment the results on the PR
+    needs: [verify_on_simulator, publish_pr_update]
+    type: github-comment
+    params:
+      payload: |
+        ## 🤖 Agent verification
+
+        **Verdict:** ${{ needs.verify_on_simulator.outputs.verdict }}
+
+        - **Evidence site:** ${{ needs.verify_on_simulator.outputs.evidence_url }}
+        - **Preview channel:** `pr-${{ github.event.pull_request.number }}`
+
+        To try this on your phone, open PickPulse, tap the gear icon, enter
+        `pr-${{ github.event.pull_request.number }}`, then tap Switch channel.

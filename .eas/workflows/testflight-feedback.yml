@@ -1,0 +1,48 @@
+name: TestFlight feedback
+
+on:
+  app_store_connect:
+    beta_feedback:
+      types:
+        - screenshot
+        - crash
+
+jobs:
+  file_issue:
+    name: File GitHub issue from feedback
+    type: custom
+    environment: production
+    outputs:
+      issue_number: ${{ steps.create_issue.outputs.issue_number }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Create issue from feedback
+        id: create_issue
+        env:
+          ASC_FEEDBACK_ID: ${{ app_store_connect.beta_feedback.id }}
+          ASC_FEEDBACK_TYPE: ${{ app_store_connect.beta_feedback.type }}
+          ASC_FEEDBACK_URL: ${{ app_store_connect.beta_feedback.url }}
+          ASC_APP_ID: ${{ app_store_connect.app.id }}
+        run: |
+          FEEDBACK_JSON=$(node -e 'console.log(JSON.stringify({
+            id: process.env.ASC_FEEDBACK_ID,
+            type: process.env.ASC_FEEDBACK_TYPE,
+            url: process.env.ASC_FEEDBACK_URL,
+            app_id: process.env.ASC_APP_ID,
+          }))')
+          export FEEDBACK_JSON
+          node scripts/agent/create-issue-from-feedback.mjs
+
+  dispatch_agent_fix:
+    name: Dispatch agent fix
+    needs: [file_issue]
+    type: custom
+    environment: production
+    steps:
+      - uses: eas/checkout
+      - name: Run the agent-fix workflow
+        run: |
+          npx --yes eas-cli@latest workflow:run .eas/workflows/agent-fix.yml \
+            --input issue_number=${{ needs.file_issue.outputs.issue_number }} \
+            --non-interactive

@@ -1,0 +1,24 @@
+name: Agent fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: The GitHub issue number to fix
+        type: string
+        required: true
+
+jobs:
+  fix_issue:
+    name: Fix issue and open PR
+    type: custom
+    environment: production
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Fix the issue and open a PR
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: bash scripts/agent/fix-issue.sh

@@ -1,0 +1,26 @@
+name: Code review
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  review_pr:
+    name: Review the PR diff
+    type: custom
+    environment: production
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Review the diff and post a comment
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: bash scripts/agent/review-pr.sh

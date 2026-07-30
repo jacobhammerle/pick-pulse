@@ -1,0 +1,60 @@
+name: EAS comment bridge
+
+# Forwards `/agent <change>` pull request comments to the agent-iterate
+# EAS workflow.
+#
+# The `if` condition below is a security gate. Only the repository owner,
+# organization members, and collaborators can drive the agent. Do not
+# remove it — without it, anyone who can comment could run arbitrary
+# instructions against this repository with your credentials.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch_agent_iterate:
+    name: Forward the /agent comment to EAS
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/agent') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Extract the instruction
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Take the first line only, and strip the /agent prefix.
+          INSTRUCTION=$(printf '%s' "$COMMENT_BODY" | head -n 1 | sed -E 's#^/agent[[:space:]]*##' | sed -E 's/[[:space:]]+$//')
+          if [ -z "$INSTRUCTION" ]; then
+            echo "No instruction followed /agent — nothing to do." >&2
+            exit 1
+          fi
+          {
+            echo "instruction<<__EOF__"
+            echo "$INSTRUCTION"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run the agent-iterate workflow on EAS
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ secrets.EAS_PROJECT_ID }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          INSTRUCTION: ${{ steps.parse.outputs.instruction }}
+        run: |
+          npx --yes eas-cli@latest workflow:run .eas/workflows/agent-iterate.yml \
+            --input "pr_number=${PR_NUMBER}" \
+            --input "instruction=${INSTRUCTION}" \
+            --non-interactive

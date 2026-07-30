@@ -1,0 +1,51 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  fingerprint:
+    name: Fingerprint the project
+    type: fingerprint
+
+  find_store_build:
+    name: Find a matching store build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: production
+      distribution: store
+      channel: production
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+
+  publish_update:
+    name: Ship an OTA update
+    needs: [find_store_build]
+    if: ${{ needs.find_store_build.outputs.build_id }}
+    type: update
+    environment: production
+    params:
+      platform: ios
+      channel: production
+      message: ${{ github.commit_message }}
+
+  build_production:
+    name: Build a new store build
+    needs: [find_store_build]
+    if: ${{ !needs.find_store_build.outputs.build_id }}
+    type: build
+    environment: production
+    params:
+      platform: ios
+      profile: production
+
+  submit_production:
+    name: Submit the build to TestFlight
+    needs: [build_production]
+    type: submit
+    params:
+      build_id: ${{ needs.build_production.outputs.build_id }}
+      profile: production
