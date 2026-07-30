@@ -35,7 +35,7 @@ PROMPT=$(cat <<EOF
 You are verifying a bug fix on a remote iOS simulator for PR #${PR_NUMBER}:
 "${PR_TITLE}".
 
-The app under test is PickPulse (bundle id dev.expo.pickpulse), already
+The app under test is PickPulse (bundle id com.jacobhammerle.pickpulse), already
 installed on a remote EAS simulator. Drive it with agent-device through
 eas-cli. Every device command must be run exactly like this:
 
@@ -45,7 +45,7 @@ Available verbs: apps, open, snapshot -i, press <ref>, fill <ref> "text",
 screenshot <path>. The tap verb is "press", never "tap".
 
 Verification steps:
-1. Open the app: open dev.expo.pickpulse --platform ios
+1. Open the app: open com.jacobhammerle.pickpulse --platform ios
 2. snapshot -i to see the board.
 3. Add at least 2 picks by pressing More/Less buttons on prop cards.
 4. Open the slip (the "View Slip" bar at the bottom).

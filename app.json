@@ -14,14 +14,14 @@
     },
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "dev.expo.pickpulse",
+      "bundleIdentifier": "com.jacobhammerle.pickpulse",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "dev.expo.pickpulse",
+      "package": "com.jacobhammerle.pickpulse",
       "adaptiveIcon": {
         "backgroundColor": "#0D0D17",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -56,8 +56,10 @@ schema evolves — validate before the dry run.)
 
 ### 2. App Store Connect (for the TestFlight feedback trigger)
 
-- Create the app in App Store Connect (bundle id `dev.expo.pickpulse`,
-  or change it in `app.json` to match your team's conventions).
+- Create the app in App Store Connect (bundle id
+  `com.jacobhammerle.pickpulse`, under your personal Apple Developer
+  team). If you change it in `app.json`, also update the two references
+  in `scripts/agent/verify-on-simulator.sh`.
 - Put your ASC app ID in `eas.json` → `submit.production.ios.ascAppId`.
 - Connect ASC to the EAS project: expo.dev → project → Settings →
   Connections → App Store Connect. This enables the
