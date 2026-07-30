@@ -15,7 +15,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "dev.expo.pickpulse",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "dev.expo.pickpulse",
