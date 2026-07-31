@@ -14,10 +14,20 @@ try {
 }
 
 // `testflight:feedback` returns { feedback: {...} } for a single-ID lookup
-// but { feedback: [...] } when listing. Accept either, and fall back to the
-// payload itself if the wrapper ever goes away.
+// but { feedback: [...] } when listing (the workflow's fallback path).
+// From a list, prefer the submission the trigger reported; otherwise take
+// the newest one.
 const raw = payload.feedback ?? payload;
-const feedback = Array.isArray(raw) ? (raw[0] ?? {}) : raw;
+let feedback = raw;
+if (Array.isArray(raw)) {
+  const triggerId = process.env.ASC_FEEDBACK_ID;
+  feedback =
+    (triggerId && raw.find((f) => f.id === triggerId)) ??
+    [...raw].sort(
+      (a, b) => new Date(b.createdDate ?? 0) - new Date(a.createdDate ?? 0)
+    )[0] ??
+    {};
+}
 
 const comment = feedback.comment ?? '(no comment provided)';
 const tester = feedback.testerEmail ?? feedback.testerName ?? 'unknown tester';
