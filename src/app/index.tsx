@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  previewLink: { color: colors.textDim, fontSize: 20, padding: 4 },
+  previewLink: { color: colors.textDim, fontSize: 30, padding: 4 },
   card: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
