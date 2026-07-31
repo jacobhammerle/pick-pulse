@@ -3,8 +3,17 @@
 # Requires: PR_NUMBER, BASE_REF, ANTHROPIC_API_KEY, GITHUB_TOKEN, GH_REPO
 set -euo pipefail
 
-git fetch origin "$BASE_REF" --depth 50
-git diff "origin/${BASE_REF}"...HEAD > /tmp/pr.diff
+# The EAS checkout is shallow (depth 1), so HEAD has no recorded parents and
+# a three-dot diff may find no merge base. Deepen first, then fetch the base
+# branch; FETCH_HEAD is used because a single-branch checkout may not create
+# an origin/<base> tracking ref. Fall back to a two-dot diff when there is
+# still no merge base.
+git fetch --deepen 100 origin 2>/dev/null || true
+git fetch origin "$BASE_REF" --depth 100
+if ! git diff FETCH_HEAD...HEAD > /tmp/pr.diff 2>/dev/null; then
+  echo "No merge base in the shallow checkout; using a two-dot diff."
+  git diff FETCH_HEAD HEAD > /tmp/pr.diff
+fi
 
 PROMPT=$(cat <<EOF
 Review this pull request diff for an Expo React Native sports picks
