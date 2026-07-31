@@ -20,19 +20,14 @@ jobs:
       - name: Create issue from feedback
         id: create_issue
         env:
-          ASC_FEEDBACK_ID: ${{ app_store_connect.beta_feedback.id }}
-          ASC_FEEDBACK_TYPE: ${{ app_store_connect.beta_feedback.type }}
           ASC_FEEDBACK_URL: ${{ app_store_connect.beta_feedback.url }}
-          ASC_APP_ID: ${{ app_store_connect.app.id }}
         run: |
-          FEEDBACK_JSON=$(node -e 'console.log(JSON.stringify({
-            id: process.env.ASC_FEEDBACK_ID,
-            type: process.env.ASC_FEEDBACK_TYPE,
-            url: process.env.ASC_FEEDBACK_URL,
-            app_id: process.env.ASC_APP_ID,
-          }))')
+          # The trigger context only carries id/type/url, so fetch the full
+          # submission (comment, tester, device, screenshots) by URL.
+          FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback "$ASC_FEEDBACK_URL" --json)
           export FEEDBACK_JSON
-          node scripts/agent/create-issue-from-feedback.mjs
+          ISSUE_NUMBER=$(node scripts/agent/create-issue-from-feedback.mjs)
+          set-output issue_number "$ISSUE_NUMBER"
 
   dispatch_agent_fix:
     name: Dispatch agent fix

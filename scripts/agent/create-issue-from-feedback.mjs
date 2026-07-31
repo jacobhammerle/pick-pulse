@@ -1,27 +1,32 @@
-// Turns TestFlight beta feedback (from the app_store_connect.beta_feedback
-// workflow trigger) into a GitHub issue.
-// Reads FEEDBACK_JSON from the environment; shape can vary, so parse
-// defensively. Emits issue_number as a step output via `set-output`.
+// Turns TestFlight beta feedback into a GitHub issue.
+// Reads FEEDBACK_JSON from the environment: the output of
+// `eas testflight:feedback <url> --json`, which the workflow resolves from
+// the app_store_connect.beta_feedback trigger context.
+// Logs go to stderr; the issue number is the only thing on stdout, so the
+// workflow step can capture it and pass it to set-output.
 import { execFileSync } from 'node:child_process';
 
-let feedback = {};
+let payload = {};
 try {
-  feedback = JSON.parse(process.env.FEEDBACK_JSON || '{}');
+  payload = JSON.parse(process.env.FEEDBACK_JSON || '{}');
 } catch {
   // keep going with an empty object; the raw payload goes in the issue body
 }
 
-const comment =
-  feedback.comment ??
-  feedback.text ??
-  feedback.feedback_text ??
-  '(no comment provided)';
-const tester =
-  feedback.tester_email ?? feedback.tester ?? feedback.email ?? 'unknown tester';
-const buildVersion =
-  feedback.app_build_version ?? feedback.build_version ?? 'unknown build';
-const screenshots = []
-  .concat(feedback.screenshots ?? feedback.screenshot_urls ?? [])
+// `testflight:feedback` returns { feedback: [...] } for both list and
+// single-ID lookups. Fall back to the object itself if that ever changes.
+const feedback = Array.isArray(payload.feedback)
+  ? (payload.feedback[0] ?? {})
+  : payload;
+
+const comment = feedback.comment ?? '(no comment provided)';
+const tester = feedback.testerEmail ?? feedback.testerName ?? 'unknown tester';
+const buildVersion = feedback.buildVersion ?? 'unknown build';
+const device = [feedback.deviceModel, feedback.osVersion && `iOS ${feedback.osVersion}`]
+  .filter(Boolean)
+  .join(', ');
+const screenshots = (feedback.screenshots ?? [])
+  .map((s) => (typeof s === 'string' ? s : s.url))
   .filter(Boolean);
 
 const title = `TestFlight feedback: ${String(comment).slice(0, 80)}`;
@@ -31,13 +36,19 @@ const body = [
   '',
   `**Tester:** ${tester}`,
   `**Build:** ${buildVersion}`,
+  device ? `**Device:** ${device}` : '',
+  feedback.createdDate ? `**Submitted:** ${feedback.createdDate}` : '',
   '',
   '### Comment',
   '',
   String(comment),
   '',
+  // Apple's screenshot URLs are presigned and expire, so note the deadline.
   screenshots.length > 0 ? '### Screenshots' : '',
-  ...screenshots.map((s, i) => `![screenshot-${i + 1}](${typeof s === 'string' ? s : s.url})`),
+  ...screenshots.map((url, i) => `![screenshot-${i + 1}](${url})`),
+  screenshots.length > 0 && feedback.screenshots?.[0]?.expirationDate
+    ? `\n_Screenshot links expire ${feedback.screenshots[0].expirationDate}._`
+    : '',
   '',
   '<details><summary>Raw feedback payload</summary>',
   '',
@@ -56,7 +67,6 @@ const out = execFileSync(
   { encoding: 'utf8' }
 );
 const { number, url } = JSON.parse(out.trim().split('\n').pop());
-console.log(`Created issue #${number}: ${url}`);
 
-// Expose the issue number to later workflow steps.
-execFileSync('set-output', ['issue_number', String(number)], { stdio: 'inherit' });
+console.error(`Created issue #${number}: ${url}`);
+console.log(String(number));
