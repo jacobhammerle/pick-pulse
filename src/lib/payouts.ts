@@ -14,7 +14,7 @@ export const MIN_PICKS = 2;
 export const MAX_PICKS = 6;
 
 export function getMultiplier(pickCount: number): number {
-  return PAYOUT_MULTIPLIERS[pickCount - 1];
+  return PAYOUT_MULTIPLIERS[pickCount];
 }
 
 export function getPotentialPayout(entryAmount: number, pickCount: number): number {
