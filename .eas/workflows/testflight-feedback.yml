@@ -27,12 +27,16 @@ jobs:
           # submission (comment, tester, device, screenshots) by ID. Passing
           # the trigger's url instead fails with "Invalid URL path".
           echo "beta_feedback id=$ASC_FEEDBACK_ID type=$ASC_FEEDBACK_TYPE"
-          if ! FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback "$ASC_FEEDBACK_ID" --type "$ASC_FEEDBACK_TYPE" --json 2>/tmp/feedback-lookup.log); then
+          # The app_store_connect context is not interpolated on these runs
+          # (the literal ${{ ... }} reaches the shell), so don't depend on
+          # it: use the ID when it looks real, otherwise take the newest
+          # screenshot submission from the list.
+          if [[ "$ASC_FEEDBACK_ID" == *'${{'* || -z "$ASC_FEEDBACK_ID" ]]; then
+            echo "Trigger context not interpolated; listing recent submissions instead."
+            FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback --json --limit 20)
+          elif ! FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback "$ASC_FEEDBACK_ID" --type "$ASC_FEEDBACK_TYPE" --json 2>/tmp/feedback-lookup.log); then
             echo "Single-ID lookup failed with:"
             cat /tmp/feedback-lookup.log
-            if [ "$ASC_FEEDBACK_TYPE" != "screenshot" ]; then
-              exit 1
-            fi
             echo "Falling back to the most recent screenshot submissions."
             FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback --json --limit 20)
           fi
