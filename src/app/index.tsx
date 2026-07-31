@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BOARD, type PropLine } from '../data/board';
@@ -71,7 +72,19 @@ export default function BoardScreen() {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>Tonight&apos;s Board</Text>
+            <View style={styles.brand}>
+              <Image
+                source={require('../../assets/images/logo-mark.png')}
+                style={styles.logoMark}
+                contentFit="contain"
+                accessibilityIgnoresInvertColors
+                alt="PickPulse"
+              />
+              <View>
+                <Text style={styles.wordmark}>PickPulse</Text>
+                <Text style={styles.headerSubtitle}>Tonight&apos;s Board</Text>
+              </View>
+            </View>
             <Link href="/preview" style={styles.previewLink}>
               ⚙︎
             </Link>
@@ -100,7 +113,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  headerTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoMark: { width: 34, height: 34 },
+  wordmark: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  headerSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 1 },
   previewLink: { color: colors.textDim, fontSize: 20, padding: 4 },
   card: {
     backgroundColor: colors.card,

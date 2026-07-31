@@ -13,7 +13,6 @@
       "policy": "fingerprint"
     },
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.jacobhammerle.pickpulse",
       "supportsTablet": false,
       "infoPlist": {
@@ -41,7 +40,7 @@
         {
           "backgroundColor": "#0D0D17",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 160
         }
       ]
     ],
