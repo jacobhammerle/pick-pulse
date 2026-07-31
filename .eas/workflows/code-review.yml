@@ -20,7 +20,9 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
       - name: Review the diff and post a comment
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: bash scripts/agent/review-pr.sh
+        run: |
+          # env: blocks pass template expressions through as literal text on
+          # EAS right now, so resolve the context in the run script instead.
+          export PR_NUMBER="${{ github.event.pull_request.number }}"
+          export BASE_REF="${{ github.event.pull_request.base.ref }}"
+          bash scripts/agent/review-pr.sh

@@ -59,11 +59,18 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Drive the app and collect evidence
         id: verify
-        env:
-          BUILD_ID: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: bash scripts/agent/verify-on-simulator.sh
+        run: |
+          # env: blocks pass template expressions through as literal text on
+          # EAS right now, so resolve the context in the run script instead.
+          # The PR title is free text, so read it via a quoted heredoc.
+          export BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
+          export PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_TITLE=$(cat <<'PR_TITLE_EOF'
+          ${{ github.event.pull_request.title }}
+          PR_TITLE_EOF
+          )
+          export PR_TITLE
+          bash scripts/agent/verify-on-simulator.sh
 
   publish_pr_update:
     name: Publish an update to the pr channel

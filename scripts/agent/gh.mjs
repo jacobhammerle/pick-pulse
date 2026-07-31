@@ -63,6 +63,20 @@ switch (cmd) {
     console.log(JSON.stringify({ url: comment.html_url }));
     break;
   }
+  case 'latest-issue': {
+    // Newest open issue number (excluding PRs), on stdout by itself.
+    const issues = await api(
+      'GET',
+      `/repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=10`
+    );
+    const issue = issues.find((i) => !i.pull_request);
+    if (!issue) {
+      console.error('No open issues found');
+      process.exit(1);
+    }
+    console.log(String(issue.number));
+    break;
+  }
   case 'get-issue': {
     const [number] = args;
     const issue = await api('GET', `/repos/${repo}/issues/${number}`);

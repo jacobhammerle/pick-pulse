@@ -23,7 +23,18 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
       - name: Apply the change and push
-        env:
-          PR_NUMBER: ${{ inputs.pr_number }}
-          INSTRUCTION: ${{ inputs.instruction }}
-        run: bash scripts/agent/iterate-pr.sh
+        run: |
+          # env: blocks pass template expressions through as literal text on
+          # EAS right now, so resolve inputs in the run script instead. The
+          # instruction is free text, so read it via a quoted heredoc.
+          export PR_NUMBER="${{ inputs.pr_number }}"
+          INSTRUCTION=$(cat <<'INSTRUCTION_EOF'
+          ${{ inputs.instruction }}
+          INSTRUCTION_EOF
+          )
+          export INSTRUCTION
+          if [[ "$PR_NUMBER" == *inputs* || -z "$PR_NUMBER" ]]; then
+            echo "pr_number input not interpolated; cannot continue."
+            exit 1
+          fi
+          bash scripts/agent/iterate-pr.sh
