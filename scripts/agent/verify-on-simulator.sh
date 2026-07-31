@@ -67,8 +67,10 @@ VERDICT=$(cat "$EVIDENCE_DIR/verdict.txt" 2>/dev/null || echo "FAIL: no verdict 
 
 # 4. Build a small static evidence site and deploy it to EAS Hosting.
 node scripts/agent/build-evidence-site.mjs "$EVIDENCE_DIR" "$PR_NUMBER" "$VERDICT"
+# eas deploy path.join()s --export-dir onto the project dir, so an absolute
+# path gets doubled and "not found". Pass it relative to the project root.
 DEPLOY_JSON=$(npx --yes eas-cli@latest deploy \
-  --export-dir "$EVIDENCE_DIR/site" \
+  --export-dir "evidence/site" \
   --alias "pr-${PR_NUMBER}-evidence" \
   --non-interactive --json)
 EVIDENCE_URL=$(node -e "
