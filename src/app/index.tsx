@@ -7,11 +7,13 @@ import { colors } from '../lib/theme';
 function DirectionButton({
   prop,
   direction,
-  label,
+  arrow,
+  text,
 }: {
   prop: PropLine;
   direction: Direction;
-  label: string;
+  arrow: string;
+  text: string;
 }) {
   const { togglePick, getDirection } = usePicks();
   const selected = getDirection(prop.id) === direction;
@@ -20,7 +22,7 @@ function DirectionButton({
   return (
     <Pressable
       testID={`${direction}-${prop.id}`}
-      accessibilityLabel={`${label} ${prop.line} ${prop.stat} for ${prop.player}`}
+      accessibilityLabel={`${arrow} ${text} ${prop.line} ${prop.stat} for ${prop.player}`}
       onPress={() => togglePick(prop, direction)}
       style={[
         styles.directionButton,
@@ -28,7 +30,7 @@ function DirectionButton({
       ]}
     >
       <Text style={[styles.directionText, selected && styles.directionTextSelected]}>
-        {label}
+        <Text style={styles.directionArrow}>{arrow}</Text> {text}
       </Text>
     </Pressable>
   );
@@ -52,8 +54,8 @@ function PropCard({ prop }: { prop: PropLine }) {
         </View>
       </View>
       <View style={styles.cardActions}>
-        <DirectionButton prop={prop} direction="more" label="↑ More" />
-        <DirectionButton prop={prop} direction="less" label="↓ Less" />
+        <DirectionButton prop={prop} direction="more" arrow="↑" text="More" />
+        <DirectionButton prop={prop} direction="less" arrow="↓" text="Less" />
       </View>
     </View>
   );
@@ -128,6 +130,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   directionText: { color: colors.text, fontWeight: '700' },
+  directionArrow: { fontSize: 18 },
   directionTextSelected: { color: colors.bg },
   slipBar: {
     position: 'absolute',
