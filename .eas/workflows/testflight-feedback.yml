@@ -28,10 +28,11 @@ jobs:
           # the trigger's url instead fails with "Invalid URL path".
           echo "beta_feedback id=$ASC_FEEDBACK_ID type=$ASC_FEEDBACK_TYPE"
           # The app_store_connect context is not interpolated on these runs
-          # (the literal ${{ ... }} reaches the shell), so don't depend on
-          # it: use the ID when it looks real, otherwise take the newest
-          # screenshot submission from the list.
-          if [[ "$ASC_FEEDBACK_ID" == *'${{'* || -z "$ASC_FEEDBACK_ID" ]]; then
+          # (the literal expression text reaches the shell), so don't depend
+          # on it: use the ID when it looks real, otherwise take the newest
+          # screenshot submission from the list. Match on the context name --
+          # writing the template-open braces here breaks EAS's script parser.
+          if [[ "$ASC_FEEDBACK_ID" == *app_store_connect* || -z "$ASC_FEEDBACK_ID" ]]; then
             echo "Trigger context not interpolated; listing recent submissions instead."
             FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback --json --limit 20)
           elif ! FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback "$ASC_FEEDBACK_ID" --type "$ASC_FEEDBACK_TYPE" --json 2>/tmp/feedback-lookup.log); then
