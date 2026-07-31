@@ -20,11 +20,13 @@ jobs:
       - name: Create issue from feedback
         id: create_issue
         env:
-          ASC_FEEDBACK_URL: ${{ app_store_connect.beta_feedback.url }}
+          ASC_FEEDBACK_ID: ${{ app_store_connect.beta_feedback.id }}
+          ASC_FEEDBACK_TYPE: ${{ app_store_connect.beta_feedback.type }}
         run: |
           # The trigger context only carries id/type/url, so fetch the full
-          # submission (comment, tester, device, screenshots) by URL.
-          FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback "$ASC_FEEDBACK_URL" --json)
+          # submission (comment, tester, device, screenshots) by ID. Passing
+          # the trigger's url instead fails with "Invalid URL path".
+          FEEDBACK_JSON=$(npx --yes eas-cli@latest testflight:feedback "$ASC_FEEDBACK_ID" --type "$ASC_FEEDBACK_TYPE" --json)
           export FEEDBACK_JSON
           ISSUE_NUMBER=$(node scripts/agent/create-issue-from-feedback.mjs)
           set-output issue_number "$ISSUE_NUMBER"

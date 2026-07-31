@@ -13,11 +13,11 @@ try {
   // keep going with an empty object; the raw payload goes in the issue body
 }
 
-// `testflight:feedback` returns { feedback: [...] } for both list and
-// single-ID lookups. Fall back to the object itself if that ever changes.
-const feedback = Array.isArray(payload.feedback)
-  ? (payload.feedback[0] ?? {})
-  : payload;
+// `testflight:feedback` returns { feedback: {...} } for a single-ID lookup
+// but { feedback: [...] } when listing. Accept either, and fall back to the
+// payload itself if the wrapper ever goes away.
+const raw = payload.feedback ?? payload;
+const feedback = Array.isArray(raw) ? (raw[0] ?? {}) : raw;
 
 const comment = feedback.comment ?? '(no comment provided)';
 const tester = feedback.testerEmail ?? feedback.testerName ?? 'unknown tester';
