@@ -52,8 +52,8 @@ function PropCard({ prop }: { prop: PropLine }) {
         </View>
       </View>
       <View style={styles.cardActions}>
-        <DirectionButton prop={prop} direction="more" label="More ↑" />
-        <DirectionButton prop={prop} direction="less" label="Less ↓" />
+        <DirectionButton prop={prop} direction="more" label="↑ More" />
+        <DirectionButton prop={prop} direction="less" label="↓ Less" />
       </View>
     </View>
   );
