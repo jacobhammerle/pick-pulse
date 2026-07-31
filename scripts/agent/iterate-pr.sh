@@ -10,7 +10,12 @@ git config user.name "pickpulse-agent"
 git config user.email "agent@users.noreply.github.com"
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
 git fetch "$REMOTE" "$BRANCH"
-git checkout -B "$BRANCH" FETCH_HEAD
+# The worker materializes the uploaded project as untracked files, so a
+# plain checkout refuses to overwrite them. Force the branch tree, then
+# drop leftover untracked files so `git add -A` cannot commit strays
+# (node_modules and other ignored paths survive the clean).
+git checkout -f -B "$BRANCH" FETCH_HEAD
+git clean -fd
 
 PROMPT=$(cat <<EOF
 You are iterating on PR #${PR_NUMBER} of this Expo React Native app
