@@ -1,0 +1,66 @@
+name: TestFlight crash
+
+# Split from testflight-feedback.yml on purpose: EAS currently passes the
+# app_store_connect trigger context through uninterpolated, so a single
+# workflow cannot tell a crash event from a screenshot one. Subscribing to
+# one event type per file makes the type known statically.
+on:
+  app_store_connect:
+    beta_feedback:
+      types:
+        - crash
+
+jobs:
+  file_issue:
+    name: File GitHub issue from crash
+    type: custom
+    environment: production
+    outputs:
+      issue_number: ${{ steps.create_issue.outputs.issue_number }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Create issue from crash
+        id: create_issue
+        env:
+          ASC_CRASH_ID: ${{ app_store_connect.beta_feedback.id }}
+        run: |
+          echo "beta_feedback crash id=$ASC_CRASH_ID"
+          # Crash ids are opaque tokens; the uninterpolated literal always
+          # contains the context name, so fall back to the newest crash.
+          if [[ "$ASC_CRASH_ID" == *app_store_connect* || -z "$ASC_CRASH_ID" ]]; then
+            echo "Trigger context not interpolated; using the most recent crash."
+            ASC_CRASH_ID=$(npx --yes eas-cli@latest testflight:crashes --json --limit 20 \
+              | node -e "
+                let s='';
+                process.stdin.on('data', d => s += d).on('end', () => {
+                  const list = (JSON.parse(s).crashes ?? [])
+                    .sort((a, b) => new Date(b.createdDate ?? 0) - new Date(a.createdDate ?? 0));
+                  process.stdout.write(list[0]?.id ?? '');
+                });
+              ")
+          fi
+
+          if [ -z "$ASC_CRASH_ID" ]; then
+            echo "No TestFlight crashes have been reported; nothing to file."
+            exit 1
+          fi
+
+          # A single-id lookup is what returns the full symbolicated log.
+          CRASH_JSON=$(npx --yes eas-cli@latest testflight:crashes "$ASC_CRASH_ID" --type crash --json)
+          export CRASH_JSON
+          ISSUE_NUMBER=$(node scripts/agent/create-issue-from-crash.mjs)
+          set-output issue_number "$ISSUE_NUMBER"
+
+  dispatch_agent_fix:
+    name: Dispatch agent fix
+    needs: [file_issue]
+    type: custom
+    environment: production
+    steps:
+      - uses: eas/checkout
+      - name: Run the agent-fix workflow
+        run: |
+          npx --yes eas-cli@latest workflow:run .eas/workflows/agent-fix.yml \
+            --input issue_number=${{ needs.file_issue.outputs.issue_number }} \
+            --non-interactive

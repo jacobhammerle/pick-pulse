@@ -33,7 +33,9 @@ jobs:
           INSTRUCTION_EOF
           )
           export INSTRUCTION
-          if [[ "$PR_NUMBER" == *inputs* || -z "$PR_NUMBER" ]]; then
+          # A numeric test catches every uninterpolated form, not just one
+          # particular context name.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "pr_number input not interpolated; cannot continue."
             exit 1
           fi

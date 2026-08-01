@@ -23,7 +23,9 @@ jobs:
           # env: blocks pass template expressions through as literal text on
           # EAS right now, so resolve the input in the run script instead.
           ISSUE_NUMBER="${{ inputs.issue_number }}"
-          if [[ "$ISSUE_NUMBER" == *inputs* || -z "$ISSUE_NUMBER" ]]; then
+          # A numeric test catches every uninterpolated form, not just one
+          # particular context name.
+          if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "issue_number input not interpolated; using the newest open issue."
             ISSUE_NUMBER=$(node scripts/agent/gh.mjs latest-issue)
           fi

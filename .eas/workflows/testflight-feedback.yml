@@ -1,11 +1,13 @@
 name: TestFlight feedback
 
+# Crashes are handled by testflight-crash.yml. Keeping one event type per
+# workflow means the type is known statically, which matters because EAS
+# currently passes the app_store_connect context through uninterpolated.
 on:
   app_store_connect:
     beta_feedback:
       types:
         - screenshot
-        - crash
 
 jobs:
   file_issue:
