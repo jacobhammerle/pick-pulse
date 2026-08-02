@@ -4,6 +4,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BOARD, type PropLine } from '../data/board';
 import { usePicks, type Direction } from '../lib/picks-context';
 import { colors } from '../lib/theme';
+import { getBoardSubtitle } from '../lib/time';
 
 function DirectionButton({
   prop,
@@ -82,7 +83,7 @@ export default function BoardScreen() {
               />
               <View>
                 <Text style={styles.wordmark}>PickPulse</Text>
-                <Text style={styles.headerSubtitle}>Tonight&apos;s Board</Text>
+                <Text style={styles.headerSubtitle}>{getBoardSubtitle()}</Text>
               </View>
             </View>
             <Link href="/preview" style={styles.previewLink}>
