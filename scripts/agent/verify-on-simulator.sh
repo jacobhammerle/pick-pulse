@@ -8,6 +8,11 @@ set -euo pipefail
 EVIDENCE_DIR="$(pwd)/evidence"
 mkdir -p "$EVIDENCE_DIR"
 
+# agent-device@0.20.4 is broken (missing @agent-device/ad-script).
+# Pin 0.20.3 for both the remote daemon (--package-version) and the
+# CLI calls until it is fixed, then drop the pin back to latest.
+AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-0.20.3}"
+
 cleanup() {
   npx --yes eas-cli@latest simulator:stop --non-interactive || true
 }
@@ -19,6 +24,7 @@ printf '# managed by eas-cli\n' > .env.eas-simulator
 npx --yes eas-cli@latest simulator:start \
   --platform ios \
   --type agent-device \
+  --package-version "$AGENT_DEVICE_VERSION" \
   --non-interactive
 
 # 2. Get the build artifact URL and install it on the remote simulator.
@@ -28,7 +34,7 @@ APP_URL=$(npx --yes eas-cli@latest build:view "$BUILD_ID" --json | node -e "
     console.log(b.artifacts.applicationArchiveUrl);
   })")
 npx --yes eas-cli@latest simulator:exec \
-  npx agent-device@latest install-from-source "$APP_URL" --platform ios
+  npx "agent-device@${AGENT_DEVICE_VERSION}" install-from-source "$APP_URL" --platform ios
 
 # 3. Let Claude Code drive the app and collect evidence.
 PROMPT=$(cat <<EOF
@@ -39,23 +45,31 @@ The app under test is PickPulse (bundle id com.jacobhammerle.pickpulse), already
 installed on a remote EAS simulator. Drive it with agent-device through
 eas-cli. Every device command must be run exactly like this:
 
-  npx --yes eas-cli@latest simulator:exec npx agent-device@latest <verb> [args]
+  npx --yes eas-cli@latest simulator:exec npx agent-device@${AGENT_DEVICE_VERSION} <verb> [args]
 
 Available verbs: apps, open, snapshot -i, press <ref>, fill <ref> "text",
 screenshot <path>. The tap verb is "press", never "tap".
 
+Context: before this PR, Settings was only reachable through a small
+gear (⚙︎) link in the top-right of the home header. The PR moves it
+into a bottom tab bar so the user can tab between Home and Settings.
+
 Verification steps:
 1. Open the app: open com.jacobhammerle.pickpulse --platform ios
-2. snapshot -i to see the board.
-3. Add at least 2 picks by pressing More/Less buttons on prop cards.
-4. Open the slip (the "View Slip" bar at the bottom).
-5. Check the payout row: it must show a real multiplier (like ×3) and a
-   real dollar total (like \$30.00). "NaN", "undefined", or a missing
-   value means the bug is NOT fixed.
-6. Save screenshots of the board and the slip to ${EVIDENCE_DIR}/board.png
-   and ${EVIDENCE_DIR}/slip.png.
-7. Write your verdict to ${EVIDENCE_DIR}/verdict.txt as a single line:
-   "PASS: <short reason>" or "FAIL: <short reason>".
+2. snapshot -i to see the home screen (the picks board).
+3. Check for a tab bar at the bottom of the screen with a Home tab and
+   a Settings tab. No tab bar means the change is NOT working.
+4. Save a screenshot to ${EVIDENCE_DIR}/1-home-with-tabs.png.
+5. Press the Settings tab. Confirm the settings screen appears (it has
+   the channel switching UI: a channel text field and a Switch channel
+   button). Save ${EVIDENCE_DIR}/2-settings-tab.png.
+6. Press the Home tab. Confirm the picks board comes back. Save
+   ${EVIDENCE_DIR}/3-back-home.png.
+7. Confirm the old gear (⚙︎) link is gone from the home header. If it
+   is still there, note it in the verdict but do not fail on it alone.
+8. Write your verdict to ${EVIDENCE_DIR}/verdict.txt as a single line:
+   "PASS: <short reason>" or "FAIL: <short reason>". PASS means: tab
+   bar present, and tabbing to Settings and back to Home both work.
 EOF
 )
 

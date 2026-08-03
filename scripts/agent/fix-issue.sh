@@ -14,15 +14,17 @@ git config user.email "agent@users.noreply.github.com"
 git checkout -b "$BRANCH"
 
 PROMPT=$(cat <<EOF
-You are fixing a bug in this Expo React Native app (PickPulse, a sports
-picks demo app).
+You are resolving a GitHub issue in this Expo React Native app
+(PickPulse, a sports picks demo app). The issue may be a bug report or
+a small feature/UX request.
 
 GitHub issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
 
 ${ISSUE_BODY}
 
 Instructions:
-1. Find the root cause. Start with src/lib and src/app.
+1. Understand what the issue asks for. Start with src/lib and src/app.
+   The app uses expo-router; navigation lives in src/app/_layout.tsx.
 2. Implement a minimal, correct fix. Do not refactor unrelated code.
 3. Run: npx tsc --noEmit — and make sure it passes.
 4. Do NOT commit or push. Just edit the files.

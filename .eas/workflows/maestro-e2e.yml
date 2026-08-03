@@ -1,0 +1,49 @@
+name: Maestro e2e
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fingerprint:
+    name: Fingerprint the project
+    type: fingerprint
+
+  find_simulator_build:
+    name: Find a matching simulator build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: preview-simulator
+      simulator: true
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  repack_simulator_build:
+    name: Repack the cached simulator build
+    needs: [find_simulator_build]
+    if: ${{ needs.find_simulator_build.outputs.build_id }}
+    type: repack
+    params:
+      build_id: ${{ needs.find_simulator_build.outputs.build_id }}
+      profile: preview-simulator
+      js_bundle_only: true
+
+  build_simulator_build:
+    name: Build a new simulator app
+    needs: [find_simulator_build]
+    if: ${{ !needs.find_simulator_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview-simulator
+
+  run_maestro_flows:
+    name: Run the generated Maestro flows
+    after: [repack_simulator_build, build_simulator_build]
+    type: maestro
+    environment: preview
+    params:
+      build_id: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
+      flow_path: .maestro/flows
+      record_screen: true

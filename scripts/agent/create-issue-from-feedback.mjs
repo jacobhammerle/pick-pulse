@@ -55,7 +55,13 @@ const body = [
   '',
   // Apple's screenshot URLs are presigned and expire, so note the deadline.
   screenshots.length > 0 ? '### Screenshots' : '',
-  ...screenshots.map((url, i) => `![screenshot-${i + 1}](${url})`),
+  // Markdown images render full width; an HTML img with a width keeps a
+  // portrait phone screenshot thumbnail-sized. Wrapping it in a link
+  // preserves click-to-open-full-size.
+  ...screenshots.map(
+    (url, i) =>
+      `<a href="${url}"><img src="${url}" alt="screenshot-${i + 1}" width="260" /></a>`
+  ),
   screenshots.length > 0 && feedback.screenshots?.[0]?.expirationDate
     ? `\n_Screenshot links expire ${feedback.screenshots[0].expirationDate}._`
     : '',

@@ -1,0 +1,125 @@
+name: QA to Maestro
+
+on:
+  workflow_dispatch:
+    inputs:
+      feature:
+        description: The feature for the QA agent to test
+        type: string
+        required: true
+      guidance:
+        description: Optional extra instructions for the QA agent (expected values, boundaries, steps to include)
+        type: string
+        required: false
+
+jobs:
+  fingerprint:
+    name: Fingerprint the project
+    type: fingerprint
+
+  find_simulator_build:
+    name: Find a matching simulator build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: preview-simulator
+      simulator: true
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  repack_simulator_build:
+    name: Repack the cached simulator build
+    needs: [find_simulator_build]
+    if: ${{ needs.find_simulator_build.outputs.build_id }}
+    type: repack
+    params:
+      build_id: ${{ needs.find_simulator_build.outputs.build_id }}
+      profile: preview-simulator
+      js_bundle_only: true
+
+  build_simulator_build:
+    name: Build a new simulator app
+    needs: [find_simulator_build]
+    if: ${{ !needs.find_simulator_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview-simulator
+
+  qa_and_author:
+    name: QA agent explores, second agent writes the Maestro flow
+    after: [repack_simulator_build, build_simulator_build]
+    type: custom
+    environment: preview
+    outputs:
+      build_id: ${{ steps.qa.outputs.build_id }}
+      slug: ${{ steps.qa.outputs.slug }}
+      flow_b64: ${{ steps.qa.outputs.flow_b64 }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Run the QA agent, then author the flow
+        id: qa
+        run: |
+          # env: blocks pass template expressions through as literal text on
+          # EAS right now, so resolve the context in the run script instead.
+          # The feature is free text, so read it via a quoted heredoc.
+          export BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
+          FEATURE=$(cat <<'FEATURE_EOF'
+          ${{ inputs.feature }}
+          FEATURE_EOF
+          )
+          GUIDANCE=$(cat <<'GUIDANCE_EOF'
+          ${{ inputs.guidance }}
+          GUIDANCE_EOF
+          )
+          # Guard against uninterpolated input expressions.
+          case "$FEATURE" in *'${{'*) FEATURE="the pick slip payout flow";; esac
+          case "$GUIDANCE" in *'${{'*) GUIDANCE="";; esac
+          bash scripts/agent/qa-to-maestro.sh "$FEATURE" "$GUIDANCE"
+
+          SLUG=$(cat qa-run/slug.txt)
+          FLOW_PATH=$(cat qa-run/flow-path.txt)
+          set-output build_id "$BUILD_ID"
+          set-output slug "$SLUG"
+          set-output flow_b64 "$(base64 < "$FLOW_PATH" | tr -d '\n')"
+      - name: Open a PR that adds the flow to the repo (best effort)
+        run: |
+          SLUG=$(cat qa-run/slug.txt)
+          FLOW_PATH=$(cat qa-run/flow-path.txt)
+          BRANCH="maestro/${SLUG}"
+          git config user.name "pickpulse-agent"
+          git config user.email "agent@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add "$FLOW_PATH"
+          git commit -m "test: add generated Maestro flow ${SLUG}"
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
+          if git push "$REMOTE" "HEAD:${BRANCH}"; then
+            node scripts/agent/gh.mjs create-pr "$BRANCH" \
+              "Add generated Maestro flow: ${SLUG}" \
+              "This flow was authored by an agent from a QA session log on an EAS cloud simulator. The same workflow run executed it with the EAS maestro job." \
+              || echo "PR creation failed; the branch ${BRANCH} was pushed."
+          else
+            echo "Push failed; skipping the PR. The flow still runs in this workflow."
+          fi
+
+  run_maestro:
+    name: Run the generated flow deterministically
+    needs: [qa_and_author]
+    type: maestro
+    environment: preview
+    params:
+      build_id: ${{ needs.qa_and_author.outputs.build_id }}
+      flow_path: .maestro/flows/generated.yaml
+      record_screen: true
+    hooks:
+      after_checkout:
+        - name: Materialize the generated flow
+          run: |
+            mkdir -p .maestro/flows
+            # openssl decodes on both linux and macOS runners (base64 -d is GNU-only)
+            echo "${{ needs.qa_and_author.outputs.flow_b64 }}" | openssl base64 -d -A > .maestro/flows/generated.yaml
+            cat .maestro/flows/generated.yaml

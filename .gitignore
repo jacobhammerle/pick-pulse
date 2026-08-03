@@ -42,5 +42,8 @@ yarn-error.*
 # Agent verification artifacts (screenshots, video, generated site)
 evidence/
 
+# QA agent session artifacts (device log, screenshots, report)
+qa-run/
+
 # typescript
 *.tsbuildinfo
