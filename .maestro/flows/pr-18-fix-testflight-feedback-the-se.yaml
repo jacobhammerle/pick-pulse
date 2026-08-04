@@ -1,0 +1,32 @@
+appId: com.jacobhammerle.pickpulse
+tags:
+  - generated
+---
+# Log step 1 (04:30:14): open com.jacobhammerle.pickpulse
+- launchApp:
+    clearState: true
+
+# Log step 2 (04:30:25 snapshot): Home screen shows tab bar with "Home" and
+# "Settings" tabs, no gear icon link (@e71-@e73)
+- assertVisible: "PickPulse"
+- assertVisible: "Home, tab, 1 of 2"
+- assertVisible: "Settings, tab, 2 of 2"
+- takeScreenshot: step-1-home
+
+# Log step 3 (04:30:52): press @e73 "Settings, tab, 2 of 2"
+- tapOn: "Settings, tab, 2 of 2"
+
+# Log step 4 (04:30:57 snapshot): Settings screen opens, title "Settings"
+# and channel switch UI visible, tab marked [selected]
+- assertVisible: "Settings"
+- assertVisible: "Channel: preview"
+- assertVisible: "Surf to a channel"
+- takeScreenshot: step-2-settings
+
+# Log step 5 (04:31:10): press @e14 "Home, tab, 1 of 2"
+- tapOn: "Home, tab, 1 of 2"
+
+# Log step 6 (04:31:16 snapshot): app returns to board screen showing
+# player prop cards, "Home, tab, 1 of 2" marked [selected]
+- assertVisible: "Jalen Carter"
+- takeScreenshot: step-3-home-return
