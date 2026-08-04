@@ -7,15 +7,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { getUpdateInfo, resetChannelAsync, switchChannelAsync } from '../lib/channel';
-import { colors } from '../lib/theme';
+import { getUpdateInfo, resetChannelAsync, switchChannelAsync } from '../../lib/channel';
+import { colors } from '../../lib/theme';
 
 /**
- * Channel surfing screen. During the demo, enter the PR channel
- * name posted on the pull request (for example, "pr-4") to preview
+ * Settings screen. During the demo, enter the PR channel name
+ * posted on the pull request (for example, "pr-4") to preview
  * that update in this installed build.
  */
-export default function PreviewScreen() {
+export default function SettingsScreen() {
   const [channel, setChannel] = useState('');
   const [busy, setBusy] = useState(false);
   const info = getUpdateInfo();

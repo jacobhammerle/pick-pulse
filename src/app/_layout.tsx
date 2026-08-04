@@ -15,12 +15,11 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'PickPulse' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="slip"
           options={{ title: 'Your Slip', presentation: 'modal' }}
         />
-        <Stack.Screen name="preview" options={{ title: 'Preview Channel' }} />
       </Stack>
     </PicksProvider>
   );
