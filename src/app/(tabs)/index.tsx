@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BOARD, type PropLine } from '../../data/board';
 import { usePicks, type Direction } from '../../lib/picks-context';
 import { colors } from '../../lib/theme';
@@ -62,6 +63,7 @@ function PropCard({ prop }: { prop: PropLine }) {
 
 export default function BoardScreen() {
   const { picks } = usePicks();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
@@ -71,7 +73,7 @@ export default function BoardScreen() {
         renderItem={({ item }) => <PropCard prop={item} />}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, { marginTop: insets.top + 12 }]}>
             <View style={styles.brand}>
               <Image
                 source={require('../../../assets/images/logo-mark.png')}
