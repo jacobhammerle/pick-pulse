@@ -19,13 +19,16 @@ cleanup() {
 trap cleanup EXIT
 
 # 1. Start the cloud simulator session (visible in the EAS dashboard
-#    under Simulator Sessions — open it on the projector).
+#    under Simulator Sessions — open it on the projector). Name it so
+#    the sessions list reads like a history of verified PRs.
+SESSION_NAME=$(printf 'PR #%s verify: %s' "$PR_NUMBER" "$PR_TITLE" | cut -c1-50)
 printf '# managed by eas-cli\n' > .env.eas-simulator
 npx --yes eas-cli@latest simulator:start \
   --platform ios \
   --type agent-device \
   --package-version "$AGENT_DEVICE_VERSION" \
-  --non-interactive
+  --non-interactive \
+  --name "$SESSION_NAME"
 
 # 2. Get the build artifact URL and install it on the remote simulator.
 APP_URL=$(npx --yes eas-cli@latest build:view "$BUILD_ID" --json | node -e "

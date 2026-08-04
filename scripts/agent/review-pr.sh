@@ -19,6 +19,10 @@ PROMPT=$(cat <<EOF
 Review this pull request diff for an Expo React Native sports picks
 demo app. The diff is in /tmp/pr.diff.
 
+This app ships to iOS only. Do not flag Android or web compatibility
+issues (iOS-only APIs, platform-specific rendering, and similar), and
+do not base a verdict on them.
+
 Write a concise code review in GitHub Markdown to /tmp/review.md:
 1. One-line summary of what the change does.
 2. Correctness: does the change actually fix the stated problem?
