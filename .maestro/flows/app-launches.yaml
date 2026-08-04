@@ -1,0 +1,10 @@
+# Seed smoke flow: the app launches and the picks board renders.
+# Keeps the Maestro suite job green before any generated flows exist.
+appId: com.jacobhammerle.pickpulse
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+# Every prop card on the board has a "More ↑" button.
+- assertVisible: "More ↑"

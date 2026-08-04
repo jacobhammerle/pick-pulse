@@ -56,7 +56,13 @@ if [ -n "$PR_NUMBER" ]; then
   fi
 fi
 
-SLUG=$(echo "$FEATURE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-40)
+# PR-mode flows carry a pr-<N>- prefix: it names the flow in the
+# suite, and the workflow's loop guard keys on it.
+if [ -n "$PR_NUMBER" ]; then
+  SLUG="pr-${PR_NUMBER}-$(echo "$PR_TITLE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-30)"
+else
+  SLUG=$(echo "$FEATURE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-40)
+fi
 
 cleanup() {
   npx --yes eas-cli@latest simulator:stop --non-interactive || true
@@ -266,6 +272,9 @@ fi
 # Record where the flow landed so a wrapping EAS workflow can pick it up.
 echo "$SLUG" > "$QA_DIR/slug.txt"
 echo "$FLOW_PATH" > "$QA_DIR/flow-path.txt"
+if [ -n "$PR_NUMBER" ]; then
+  echo "$PR_NUMBER" > "$QA_DIR/pr-number.txt"
+fi
 
 # In PR mode, leave a pointer on the PR (best effort, needs GITHUB_TOKEN).
 if [ -n "$PR_NUMBER" ] && [ -n "${GITHUB_TOKEN:-}" ]; then

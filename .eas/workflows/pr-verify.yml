@@ -72,6 +72,16 @@ jobs:
           export PR_TITLE
           bash scripts/agent/verify-on-simulator.sh
 
+  run_maestro_suite:
+    name: Run the Maestro regression suite
+    after: [repack_simulator_build, build_simulator_build]
+    type: maestro
+    environment: preview
+    params:
+      build_id: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
+      flow_path: .maestro/flows
+      record_screen: true
+
   publish_pr_update:
     name: Publish an update to the pr channel
     needs: [verify_on_simulator]
