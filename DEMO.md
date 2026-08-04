@@ -211,6 +211,24 @@ npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml \
   -F guidance="add exactly 2 picks; the payout row must show a x3 multiplier and a dollar total; do not open settings"
 ```
 
+PR mode: point it at an open PR instead. The QA agent reads the PR's
+diff, works out what user-visible behavior changed, writes a short
+test plan, and tests exactly that. The Maestro flow becomes that PR's
+regression test, and the run leaves a comment on the PR.
+
+```sh
+npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml \
+  -F pr_number=12
+```
+
+`feature` is optional in PR mode (defaults to the PR title), and
+`guidance` still works. Build selection in PR mode: the script looks
+for a finished build from the PR's head commit (pr-verify usually
+made one). If none exists it warns and uses the newest
+`preview-simulator` build, which may not contain the PR's changes —
+pass the right one explicitly with `-F build_id=<id>` from the PR's
+pr-verify run.
+
 What the workflow does:
 
 1. **Build.** Fingerprint → reuse or repack the cached

@@ -3,29 +3,60 @@
 # simulator, then a second agent reads the session log and writes a
 # deterministic Maestro flow from it.
 #
-# Usage:  bash scripts/agent/qa-to-maestro.sh "<feature>" ["<extra guidance>"]
+# Usage:
+#   bash scripts/agent/qa-to-maestro.sh "<feature>" ["<extra guidance>"]
+#   PR_NUMBER=<n> bash scripts/agent/qa-to-maestro.sh ["<feature>"] ["<guidance>"]
+#
 #   e.g.  bash scripts/agent/qa-to-maestro.sh "the pick slip payout flow" \
 #           "2 picks must show x3 and a dollar total; do not open settings"
+#   e.g.  PR_NUMBER=12 bash scripts/agent/qa-to-maestro.sh
 #
-# Runs locally on a machine with `eas` and `claude` logged in.
+# In PR mode the QA agent reads the PR's diff, works out what
+# user-visible behavior changed, and tests exactly that. The build is
+# matched to the PR's head commit when possible.
+#
+# Runs locally on a machine with `eas` and `claude` logged in; PR mode
+# also needs GITHUB_TOKEN and GH_REPO.
 # Optional: BUILD_ID env var to pin a specific simulator build;
 # otherwise the newest finished preview-simulator build is used.
 set -euo pipefail
 
-FEATURE="${1:?usage: qa-to-maestro.sh \"<feature to QA>\" [\"<extra guidance>\"]}"
+FEATURE="${1:-}"
 GUIDANCE="${2:-}"
+PR_NUMBER="${PR_NUMBER:-}"
+if [ -z "$FEATURE" ] && [ -z "$PR_NUMBER" ]; then
+  echo 'usage: qa-to-maestro.sh "<feature to QA>" ["<extra guidance>"]' >&2
+  echo '   or: PR_NUMBER=<n> qa-to-maestro.sh ["<feature>"] ["<guidance>"]' >&2
+  exit 1
+fi
 
 # agent-device@0.20.4 is broken (missing @agent-device/ad-script).
 # Pin 0.20.3 for both the remote daemon (--package-version) and the
 # local CLI until it is fixed. device.sh reads the same variable.
 export AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-0.20.3}"
-SLUG=$(echo "$FEATURE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-40)
+
 BUNDLE_ID="com.jacobhammerle.pickpulse"
 
 QA_DIR="$(pwd)/qa-run"
 rm -rf "$QA_DIR"
 mkdir -p "$QA_DIR"
 export QA_LOG_FILE="$QA_DIR/device-log.md"
+
+# PR mode: fetch the PR's title, head commit, and diff.
+PR_TITLE=""
+PR_SHA=""
+if [ -n "$PR_NUMBER" ]; then
+  PR_JSON=$(node scripts/agent/gh.mjs get-pr "$PR_NUMBER")
+  PR_TITLE=$(node -e "console.log(JSON.parse(process.argv[1]).title)" "$PR_JSON")
+  PR_SHA=$(node -e "console.log(JSON.parse(process.argv[1]).sha ?? '')" "$PR_JSON")
+  node scripts/agent/gh.mjs get-pr-diff "$PR_NUMBER" > "$QA_DIR/pr-diff.patch"
+  echo "PR #${PR_NUMBER}: ${PR_TITLE} (head ${PR_SHA})"
+  if [ -z "$FEATURE" ]; then
+    FEATURE="the changes in PR #${PR_NUMBER}: ${PR_TITLE}"
+  fi
+fi
+
+SLUG=$(echo "$FEATURE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-40)
 
 cleanup() {
   npx --yes eas-cli@latest simulator:stop --non-interactive || true
@@ -43,6 +74,22 @@ if [ "$AVAILABLE" != "yes" ]; then
 fi
 
 # 1. Resolve the simulator build to test.
+#    Priority: explicit BUILD_ID > a build from the PR's head commit
+#    (pr-verify produced one) > newest preview-simulator build.
+if [ -z "${BUILD_ID:-}" ] && [ -n "$PR_SHA" ]; then
+  BUILD_ID=$(npx --yes eas-cli@latest build:list \
+    --platform ios --build-profile preview-simulator \
+    --status finished --git-commit-hash "$PR_SHA" \
+    --limit 1 --json --non-interactive \
+    | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+        console.log(JSON.parse(d)[0]?.id ?? '')})")
+  if [ -z "$BUILD_ID" ]; then
+    echo "WARNING: no finished build found for PR head ${PR_SHA}." >&2
+    echo "Falling back to the newest preview-simulator build, which may" >&2
+    echo "NOT contain the PR's changes. Pass BUILD_ID=<id> from the PR's" >&2
+    echo "pr-verify run to pin the right build." >&2
+  fi
+fi
 if [ -z "${BUILD_ID:-}" ]; then
   BUILD_ID=$(npx --yes eas-cli@latest build:list \
     --platform ios --build-profile preview-simulator \
@@ -56,6 +103,9 @@ APP_URL=$(npx --yes eas-cli@latest build:view "$BUILD_ID" --json | node -e "
   let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
     console.log(JSON.parse(d).artifacts.applicationArchiveUrl)})")
 echo "Using build $BUILD_ID"
+# Record the build actually tested so a wrapping EAS workflow can run
+# the generated flow against the same build.
+echo "$BUILD_ID" > "$QA_DIR/build-id.txt"
 
 # 2. Start the cloud simulator session and install the app.
 printf '# managed by eas-cli\n' > .env.eas-simulator
@@ -118,6 +168,17 @@ Do this:
 Keep the run tight: one pass through the feature, no wandering.
 EOF
 )
+
+if [ -f "$QA_DIR/pr-diff.patch" ]; then
+  QA_PROMPT="$QA_PROMPT
+
+This run targets PR #${PR_NUMBER}: ${PR_TITLE}.
+Before touching the device, Read ${QA_DIR}/pr-diff.patch — the PR's
+full diff. Work out what user-visible behavior it changes, write a
+short numbered test plan (2-5 steps) for exactly that at the top of
+${QA_DIR}/qa-report.md, then execute the plan on the device. Test the
+changed behavior, not the whole app."
+fi
 
 if [ -n "$GUIDANCE" ]; then
   QA_PROMPT="$QA_PROMPT
@@ -183,6 +244,15 @@ Rules:
 EOF
 )
 
+if [ -f "$QA_DIR/pr-diff.patch" ]; then
+  MAESTRO_PROMPT="$MAESTRO_PROMPT
+
+Context: the session verified PR #${PR_NUMBER} (\"${PR_TITLE}\").
+${QA_DIR}/pr-diff.patch has the diff if you need it. The flow's
+assertions must cover the behavior that PR changed — this flow is the
+PR's regression test."
+fi
+
 echo "==> Phase 2: authoring the Maestro flow from the session log..."
 claude -p "$MAESTRO_PROMPT" \
   --permission-mode acceptEdits \
@@ -196,6 +266,13 @@ fi
 # Record where the flow landed so a wrapping EAS workflow can pick it up.
 echo "$SLUG" > "$QA_DIR/slug.txt"
 echo "$FLOW_PATH" > "$QA_DIR/flow-path.txt"
+
+# In PR mode, leave a pointer on the PR (best effort, needs GITHUB_TOKEN).
+if [ -n "$PR_NUMBER" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+  VERDICT=$(grep -o 'RESULT: .*' "$QA_DIR/qa-report.md" 2>/dev/null | head -1 || echo "RESULT: unknown")
+  node scripts/agent/gh.mjs comment "$PR_NUMBER" "🧪 A QA agent tested this PR on an EAS cloud simulator (${VERDICT}) and a second agent authored a deterministic Maestro flow from the session log: \`${FLOW_PATH}\`." \
+    || echo "PR comment failed; continuing."
+fi
 
 echo ""
 echo "==> Done."

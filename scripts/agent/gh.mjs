@@ -87,8 +87,30 @@ switch (cmd) {
     const [number] = args;
     const pr = await api('GET', `/repos/${repo}/pulls/${number}`);
     console.log(
-      JSON.stringify({ title: pr.title, body: pr.body, branch: pr.head.ref })
+      JSON.stringify({
+        title: pr.title,
+        body: pr.body,
+        branch: pr.head.ref,
+        sha: pr.head.sha,
+      })
     );
+    break;
+  }
+  case 'get-pr-diff': {
+    // Raw unified diff on stdout (not JSON), via GitHub's diff media type.
+    const [number] = args;
+    const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${number}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.diff',
+        'User-Agent': 'pickpulse-eas-workflows',
+      },
+    });
+    if (!res.ok) {
+      console.error(`GitHub API diff for PR #${number} failed: ${res.status}`);
+      process.exit(1);
+    }
+    process.stdout.write(await res.text());
     break;
   }
   default:

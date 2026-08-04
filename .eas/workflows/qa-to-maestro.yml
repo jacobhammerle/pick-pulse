@@ -4,11 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       feature:
-        description: The feature for the QA agent to test
+        description: The feature for the QA agent to test (optional when pr_number is set — defaults to the PR title)
         type: string
-        required: true
+        required: false
       guidance:
         description: Optional extra instructions for the QA agent (expected values, boundaries, steps to include)
+        type: string
+        required: false
+      pr_number:
+        description: Optional PR number — the QA agent reads the PR diff and tests what it changed
+        type: string
+        required: false
+      build_id:
+        description: Optional build to test (e.g. the repack build from the PR's pr-verify run); overrides the build produced by this workflow
         type: string
         required: false
 
@@ -66,8 +74,10 @@ jobs:
         run: |
           # env: blocks pass template expressions through as literal text on
           # EAS right now, so resolve the context in the run script instead.
-          # The feature is free text, so read it via a quoted heredoc.
-          export BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
+          # Free-text inputs are read via quoted heredocs.
+          WORKFLOW_BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
+          BUILD_ID_INPUT="${{ inputs.build_id }}"
+          PR_NUMBER_INPUT="${{ inputs.pr_number }}"
           FEATURE=$(cat <<'FEATURE_EOF'
           ${{ inputs.feature }}
           FEATURE_EOF
@@ -77,13 +87,31 @@ jobs:
           GUIDANCE_EOF
           )
           # Guard against uninterpolated input expressions.
-          case "$FEATURE" in *'${{'*) FEATURE="the pick slip payout flow";; esac
+          case "$FEATURE" in *'${{'*) FEATURE="";; esac
           case "$GUIDANCE" in *'${{'*) GUIDANCE="";; esac
+          case "$BUILD_ID_INPUT" in *'${{'*) BUILD_ID_INPUT="";; esac
+          case "$PR_NUMBER_INPUT" in *'${{'*) PR_NUMBER_INPUT="";; esac
+          # An explicit build_id input beats the build this workflow made.
+          # In PR mode with no explicit build, let the script search for a
+          # build from the PR's head commit before falling back.
+          if [ -n "$BUILD_ID_INPUT" ]; then
+            export BUILD_ID="$BUILD_ID_INPUT"
+          elif [ -z "$PR_NUMBER_INPUT" ]; then
+            export BUILD_ID="$WORKFLOW_BUILD_ID"
+          fi
+          if [ -n "$PR_NUMBER_INPUT" ]; then
+            export PR_NUMBER="$PR_NUMBER_INPUT"
+          fi
+          if [ -z "$FEATURE" ] && [ -z "$PR_NUMBER_INPUT" ]; then
+            FEATURE="the pick slip payout flow"
+          fi
           bash scripts/agent/qa-to-maestro.sh "$FEATURE" "$GUIDANCE"
 
           SLUG=$(cat qa-run/slug.txt)
           FLOW_PATH=$(cat qa-run/flow-path.txt)
-          set-output build_id "$BUILD_ID"
+          # The script records the build it actually tested (in PR mode it
+          # may have picked a build from the PR's head commit).
+          set-output build_id "$(cat qa-run/build-id.txt)"
           set-output slug "$SLUG"
           set-output flow_b64 "$(base64 < "$FLOW_PATH" | tr -d '\n')"
       - name: Open a PR that adds the flow to the repo (best effort)
