@@ -140,10 +140,15 @@ jobs:
           git config user.email "agent@users.noreply.github.com"
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
           BRANCH="maestro/${SLUG}"
-          git checkout -B "$BRANCH"
+          # The worker materializes the project as untracked files, so any
+          # branch switch aborts on "would be overwritten by checkout".
+          # Never switch branches: sync the index to HEAD (the files match
+          # its tree, so status becomes clean), commit the flow on top, and
+          # push the commit straight to the branch ref.
+          git reset --mixed HEAD
           git add "$FLOW_PATH"
           git commit -m "test: add generated Maestro flow ${SLUG}"
-          if ! git push "$REMOTE" "HEAD:${BRANCH}"; then
+          if ! git push "$REMOTE" "HEAD:refs/heads/${BRANCH}"; then
             echo "Push failed; the flow still ran in this workflow."
             exit 0
           fi
