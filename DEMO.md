@@ -201,12 +201,12 @@ npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml -F pr_number=12
 
 What the run does:
 
-1. **Build.** Fingerprint → reuse or repack the cached
-   `preview-simulator` build. In PR mode the script requires a
-   finished build from the PR's head commit (pr-verify usually made
-   one), so the app under test contains the PR's changes. If none
-   exists yet, the run fails with a clear message — wait for the
-   PR's pr-verify build to finish, or pass `-F build_id=<id>`.
+1. **Build.** The workflow builds nothing itself. In PR mode it uses
+   the finished build from the PR's head commit (the one pr-verify
+   made), so the app under test contains the PR's changes. If that
+   build is not finished yet, the run fails with a clear message —
+   wait for pr-verify, or pass `-F build_id=<id>`. Feature mode uses
+   the newest finished `preview-simulator` build.
 2. **QA agent.** A custom job fetches the PR's diff, starts an EAS
    Simulator session, and Claude Code works out what user-visible
    behavior changed, writes a short test plan, and executes it on the

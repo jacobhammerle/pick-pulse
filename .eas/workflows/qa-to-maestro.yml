@@ -26,44 +26,13 @@ on:
         type: string
         required: false
 
+# No build jobs here on purpose: the script resolves the build itself.
+# PR mode requires the finished build from the PR's head commit (the one
+# pr-verify made); feature mode uses the newest finished preview-simulator
+# build. Pass build_id to override either.
 jobs:
-  fingerprint:
-    name: Fingerprint the project
-    type: fingerprint
-
-  find_simulator_build:
-    name: Find a matching simulator build
-    needs: [fingerprint]
-    type: get-build
-    params:
-      platform: ios
-      profile: preview-simulator
-      simulator: true
-      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
-      wait_for_in_progress: true
-
-  repack_simulator_build:
-    name: Repack the cached simulator build
-    needs: [find_simulator_build]
-    if: ${{ needs.find_simulator_build.outputs.build_id }}
-    type: repack
-    params:
-      build_id: ${{ needs.find_simulator_build.outputs.build_id }}
-      profile: preview-simulator
-      js_bundle_only: true
-
-  build_simulator_build:
-    name: Build a new simulator app
-    needs: [find_simulator_build]
-    if: ${{ !needs.find_simulator_build.outputs.build_id }}
-    type: build
-    params:
-      platform: ios
-      profile: preview-simulator
-
   qa_and_author:
     name: QA agent explores, second agent writes the Maestro flow
-    after: [repack_simulator_build, build_simulator_build]
     type: custom
     # production, not preview: GITHUB_TOKEN only exists there, and PR mode
     # (gh.mjs) needs it — same reason agent-fix and code-review use it.
@@ -83,7 +52,6 @@ jobs:
           # env: blocks pass template expressions through as literal text on
           # EAS right now, so resolve the context in the run script instead.
           # Free-text inputs are read via quoted heredocs.
-          WORKFLOW_BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
           BUILD_ID_INPUT="${{ inputs.build_id }}"
           PR_NUMBER_INPUT="${{ inputs.pr_number }}"
           FEATURE=$(cat <<'FEATURE_EOF'
@@ -99,21 +67,12 @@ jobs:
           case "$FEATURE" in *'${{'*) FEATURE="";; esac
           case "$GUIDANCE" in *'${{'*) GUIDANCE="";; esac
           case "$BUILD_ID_INPUT" in *'${{'*) BUILD_ID_INPUT="";; esac
-          # A skipped or failed build job renders its output expression as
-          # the literal string "undefined" — treat every non-UUID form as
-          # empty so it can never reach build:view.
-          case "$WORKFLOW_BUILD_ID" in *'${{'*|undefined|null) WORKFLOW_BUILD_ID="";; esac
 
-          # Build choice:
-          # - explicit build_id input wins
-          # - PR mode leaves BUILD_ID unset so the script can find a build
-          #   from the PR's head commit (a dispatch checks out main, so the
-          #   workflow's own build may not contain the PR's changes)
-          # - feature mode uses the workflow's build
+          # Build choice: an explicit build_id input wins; otherwise the
+          # script resolves it (PR mode: the PR head commit's build;
+          # feature mode: the newest finished preview-simulator build).
           if [ -n "$BUILD_ID_INPUT" ]; then
             export BUILD_ID="$BUILD_ID_INPUT"
-          elif [ -z "$PR_NUMBER_INPUT" ] && [ -n "$WORKFLOW_BUILD_ID" ]; then
-            export BUILD_ID="$WORKFLOW_BUILD_ID"
           fi
           if [ -n "$PR_NUMBER_INPUT" ]; then
             export PR_NUMBER="$PR_NUMBER_INPUT"
