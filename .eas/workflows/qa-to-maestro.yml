@@ -1,35 +1,30 @@
 name: QA to Maestro
 
-# Every PR ships with its own regression test: a QA agent tests what
-# the PR's diff changed, a second agent authors a Maestro flow from
-# the session log, and the flow is committed onto the PR branch.
-# workflow_dispatch remains for manual runs (feature mode or PR mode).
+# On-demand, separate from the main PR flow (pr-verify stays fast).
+# Point it at a PR: a QA agent reads the diff, tests what changed on
+# an EAS cloud simulator, a second agent authors a Maestro flow from
+# the session log, and the run SUGGESTS the test — a maestro/* branch
+# PR plus a comment on the target PR with the flow inline. Nothing is
+# pushed onto the target PR's branch.
 on:
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
+      pr_number:
+        description: PR number — the QA agent reads the PR diff and tests what it changed
+        type: string
+        required: false
       feature:
-        description: The feature for the QA agent to test (optional when pr_number is set — defaults to the PR title)
+        description: Feature mode — describe what to QA instead of targeting a PR (optional when pr_number is set)
         type: string
         required: false
       guidance:
         description: Optional extra instructions for the QA agent (expected values, boundaries, steps to include)
         type: string
         required: false
-      pr_number:
-        description: Optional PR number — the QA agent reads the PR diff and tests what it changed
-        type: string
-        required: false
       build_id:
         description: Optional build to test (e.g. the repack build from the PR's pr-verify run); overrides the build produced by this workflow
         type: string
         required: false
-
-concurrency:
-  cancel_in_progress: true
-  group: ${{ workflow.filename }}-${{ github.ref }}
 
 jobs:
   fingerprint:
@@ -91,7 +86,6 @@ jobs:
           WORKFLOW_BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
           BUILD_ID_INPUT="${{ inputs.build_id }}"
           PR_NUMBER_INPUT="${{ inputs.pr_number }}"
-          PR_NUMBER_EVENT="${{ github.event.pull_request.number }}"
           FEATURE=$(cat <<'FEATURE_EOF'
           ${{ inputs.feature }}
           FEATURE_EOF
@@ -100,39 +94,31 @@ jobs:
           ${{ inputs.guidance }}
           GUIDANCE_EOF
           )
-          # Numeric tests catch every uninterpolated or empty form.
+          # A numeric test catches every uninterpolated or empty form.
           [[ "$PR_NUMBER_INPUT" =~ ^[0-9]+$ ]] || PR_NUMBER_INPUT=""
-          [[ "$PR_NUMBER_EVENT" =~ ^[0-9]+$ ]] || PR_NUMBER_EVENT=""
           case "$FEATURE" in *'${{'*) FEATURE="";; esac
           case "$GUIDANCE" in *'${{'*) GUIDANCE="";; esac
           case "$BUILD_ID_INPUT" in *'${{'*) BUILD_ID_INPUT="";; esac
-
-          PR="${PR_NUMBER_EVENT:-$PR_NUMBER_INPUT}"
-
-          # Loop guard: this workflow pushes a flow commit to the PR
-          # branch, which re-triggers pull_request. If this PR's flow
-          # already exists in the checkout, there is nothing to do.
-          if [ -n "$PR" ] && ls .maestro/flows/pr-${PR}-*.yaml >/dev/null 2>&1; then
-            echo "Flow for PR #${PR} already committed; skipping generation."
-            exit 0
-          fi
+          # A skipped or failed build job renders its output expression as
+          # the literal string "undefined" — treat every non-UUID form as
+          # empty so it can never reach build:view.
+          case "$WORKFLOW_BUILD_ID" in *'${{'*|undefined|null) WORKFLOW_BUILD_ID="";; esac
 
           # Build choice:
           # - explicit build_id input wins
-          # - PR-triggered runs check out and build the PR's code, so the
-          #   workflow's own build is the right one
-          # - dispatch in PR mode leaves BUILD_ID unset so the script can
-          #   find a build from the PR's head commit
-          # - plain feature mode uses the workflow's build
+          # - PR mode leaves BUILD_ID unset so the script can find a build
+          #   from the PR's head commit (a dispatch checks out main, so the
+          #   workflow's own build may not contain the PR's changes)
+          # - feature mode uses the workflow's build
           if [ -n "$BUILD_ID_INPUT" ]; then
             export BUILD_ID="$BUILD_ID_INPUT"
-          elif [ -n "$PR_NUMBER_EVENT" ] || [ -z "$PR" ]; then
+          elif [ -z "$PR_NUMBER_INPUT" ] && [ -n "$WORKFLOW_BUILD_ID" ]; then
             export BUILD_ID="$WORKFLOW_BUILD_ID"
           fi
-          if [ -n "$PR" ]; then
-            export PR_NUMBER="$PR"
+          if [ -n "$PR_NUMBER_INPUT" ]; then
+            export PR_NUMBER="$PR_NUMBER_INPUT"
           fi
-          if [ -z "$FEATURE" ] && [ -z "$PR" ]; then
+          if [ -z "$FEATURE" ] && [ -z "$PR_NUMBER_INPUT" ]; then
             FEATURE="the pick slip payout flow"
           fi
           bash scripts/agent/qa-to-maestro.sh "$FEATURE" "$GUIDANCE"
@@ -144,44 +130,45 @@ jobs:
           set-output build_id "$(cat qa-run/build-id.txt)"
           set-output slug "$SLUG"
           set-output flow_b64 "$(base64 < "$FLOW_PATH" | tr -d '\n')"
-      - name: Ship the flow with the PR
+      - name: Suggest the flow (branch PR + comment)
         run: |
-          # Skipped generation (loop guard) leaves no flow-path file.
-          if [ ! -f qa-run/flow-path.txt ]; then
-            echo "No new flow; nothing to ship."
-            exit 0
-          fi
           FLOW_PATH=$(cat qa-run/flow-path.txt)
           SLUG=$(cat qa-run/slug.txt)
           PR=$(cat qa-run/pr-number.txt 2>/dev/null || true)
+          VERDICT=$(grep -o 'RESULT: .*' qa-run/qa-report.md 2>/dev/null | head -1 || echo "RESULT: unknown")
           git config user.name "pickpulse-agent"
           git config user.email "agent@users.noreply.github.com"
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
+          BRANCH="maestro/${SLUG}"
+          git checkout -B "$BRANCH"
+          git add "$FLOW_PATH"
+          git commit -m "test: add generated Maestro flow ${SLUG}"
+          if ! git push "$REMOTE" "HEAD:${BRANCH}"; then
+            echo "Push failed; the flow still ran in this workflow."
+            exit 0
+          fi
+          SUGGEST_BODY="This flow was authored by an agent from a QA session log on an EAS cloud simulator. Merge it to add the test to the suite (.maestro/flows/ runs via maestro-e2e)."
+          SUGGEST_URL=$(node scripts/agent/gh.mjs create-pr "$BRANCH" \
+            "Add generated Maestro flow: ${SLUG}" "$SUGGEST_BODY" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+                console.log(JSON.parse(d.trim().split('\n').pop()).url)})") \
+            || { echo "PR creation failed; branch ${BRANCH} was pushed."; exit 0; }
+          # In PR mode, leave the suggestion on the target PR too.
           if [ -n "$PR" ]; then
-            # Commit the flow onto the PR branch: the feature and its
-            # regression test merge together.
-            PR_JSON=$(node scripts/agent/gh.mjs get-pr "$PR")
-            BRANCH=$(node -e "console.log(JSON.parse(process.argv[1]).branch)" "$PR_JSON")
-            git fetch "$REMOTE" "$BRANCH"
-            # Force the branch tip; the untracked flow file survives.
-            git checkout -f -B "$BRANCH" FETCH_HEAD
-            git add "$FLOW_PATH"
-            git commit -m "test: add agent-generated Maestro flow for PR #${PR}"
-            git push "$REMOTE" "HEAD:${BRANCH}"
-          else
-            # Feature mode (no PR): propose the flow on its own branch.
-            BRANCH="maestro/${SLUG}"
-            git checkout -B "$BRANCH"
-            git add "$FLOW_PATH"
-            git commit -m "test: add generated Maestro flow ${SLUG}"
-            if git push "$REMOTE" "HEAD:${BRANCH}"; then
-              node scripts/agent/gh.mjs create-pr "$BRANCH" \
-                "Add generated Maestro flow: ${SLUG}" \
-                "This flow was authored by an agent from a QA session log on an EAS cloud simulator." \
-                || echo "PR creation failed; the branch ${BRANCH} was pushed."
-            else
-              echo "Push failed; skipping the PR."
-            fi
+            FLOW_YAML=$(cat "$FLOW_PATH")
+            node scripts/agent/gh.mjs comment "$PR" "## 🧪 Suggested Maestro regression test
+
+          A QA agent tested this PR on an EAS cloud simulator (**${VERDICT}**), and a second agent authored a deterministic Maestro flow from the session log. The same run replayed the flow against the same build.
+
+          Adopt it by merging ${SUGGEST_URL}
+
+          <details><summary><code>${FLOW_PATH}</code></summary>
+
+          \`\`\`yaml
+          ${FLOW_YAML}
+          \`\`\`
+
+          </details>" || echo "PR comment failed; continuing."
           fi
 
   run_maestro:

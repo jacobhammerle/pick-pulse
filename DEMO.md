@@ -188,18 +188,25 @@ what you want for the live demo.)
 8. **Ship (1 min).** Merge. Fingerprint decides: JS-only → instant OTA
    update; native change → new build + TestFlight submit.
 
-## Every PR ships with its own regression test
+## Side act: QA a PR → suggested Maestro regression test
 
-`qa-to-maestro.yml` runs on every PR, automatically. It QAs what the
-PR changed and commits a Maestro regression test onto the PR branch.
-The feature and its test merge together. Everything runs on EAS — no
-laptop simulator at any point.
+Separate from the main flow on purpose — it takes several minutes, so
+it runs on demand, not on every PR. Point it at an open PR and it
+suggests a regression test for what that PR changed. Everything runs
+on EAS — no laptop simulator at any point.
 
-What happens on each PR:
+```sh
+npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml -F pr_number=12
+```
+
+What the run does:
 
 1. **Build.** Fingerprint → reuse or repack the cached
-   `preview-simulator` build. PR-triggered runs build the PR's code,
-   so the app under test contains the PR's changes.
+   `preview-simulator` build. In PR mode the script requires a
+   finished build from the PR's head commit (pr-verify usually made
+   one), so the app under test contains the PR's changes. If none
+   exists yet, the run fails with a clear message — wait for the
+   PR's pr-verify build to finish, or pass `-F build_id=<id>`.
 2. **QA agent.** A custom job fetches the PR's diff, starts an EAS
    Simulator session, and Claude Code works out what user-visible
    behavior changed, writes a short test plan, and executes it on the
@@ -210,39 +217,28 @@ What happens on each PR:
 3. **Maestro agent.** A fresh Claude Code run reads only the session
    log and the QA report, maps session element refs back to stable
    labels, and writes `.maestro/flows/pr-<N>-<slug>.yaml`.
-4. **Ship.** The flow is committed onto the PR branch
-   (`test: add agent-generated Maestro flow for PR #N`), and the QA
-   verdict is posted as a PR comment.
+4. **Suggest.** The flow is pushed on a `maestro/<slug>` branch with
+   its own PR, and a comment lands on the target PR: the QA verdict
+   plus the full flow YAML inline. Nothing touches the target PR's
+   branch — the author adopts the test by merging the suggestion.
 5. **Prove it.** A `maestro` job in the same run executes the new
-   flow against the same build, screen recording on.
+   flow against the same build, screen recording on. The suggestion
+   arrives already proven to pass.
 
-The suite compounds: `pr-verify.yml` has a `run_maestro_suite` job
-that runs ALL committed flows in `.maestro/flows/` on every PR. So
-each merged PR's test protects every future PR.
-`.maestro/flows/app-launches.yaml` is a seed smoke flow that keeps
-the suite non-empty from day one.
-
-Loop guard: the flow commit re-triggers `pull_request`. The second
-run sees `.maestro/flows/pr-<N>-*.yaml` already in the checkout and
-skips generation.
-
-Manual runs are still available:
+Adopted flows accumulate in `.maestro/flows/`
+(`app-launches.yaml` is a seed smoke flow) and run on demand:
 
 ```sh
-# Target an open PR by hand (same result as the automatic trigger):
-npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml -F pr_number=12
+npx eas-cli@latest workflow:run .eas/workflows/maestro-e2e.yml
+```
 
-# Feature mode (no PR): QA a described feature; the flow is proposed
-# on a maestro/<slug> branch as its own PR instead.
+Feature mode (no PR) and per-run steering still work:
+
+```sh
 npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml \
   -F feature="the pick slip payout flow" \
   -F guidance="add exactly 2 picks; the payout row must show a x3 multiplier"
 ```
-
-Note on manual PR mode: a dispatched run checks out main, so the
-workflow's own build may not contain the PR's changes. The script
-looks for a finished build from the PR's head commit; if none exists
-it warns — pass `-F build_id=<id>` from the PR's pr-verify run.
 
 Local fallback (needs `eas` and `claude` logged in; prints the live
 preview URL directly):
@@ -256,17 +252,17 @@ The pieces:
 
 | Path | Purpose |
 | --- | --- |
-| `.eas/workflows/qa-to-maestro.yml` | PR trigger → QA → author → commit to PR → run |
+| `.eas/workflows/qa-to-maestro.yml` | Dispatch → QA the PR diff → author flow → suggest → prove |
 | `scripts/agent/qa-to-maestro.sh` | The two agent phases (also runs standalone on a laptop) |
 | `scripts/agent/device.sh` | Logging wrapper — the QA agent cannot take an unlogged action |
-| `.maestro/flows/` | The compounding suite (seed: `app-launches.yaml`) |
-| `pr-verify.yml` → `run_maestro_suite` | Runs the whole suite on every PR |
-| `.eas/workflows/maestro-e2e.yml` | Re-runs the suite on demand |
+| `.maestro/flows/` | Adopted flows (seed: `app-launches.yaml`) |
+| `.eas/workflows/maestro-e2e.yml` | Runs the adopted suite on demand |
 
-Talking points: every PR arrives with a test it wrote for itself, the
-suite compounds with each merge, and the device wrapper means the QA
-agent cannot take an unlogged action — so the flow author always has
-complete ground truth.
+Talking points: the agent reads the diff and QAs exactly what
+changed; the suggested test arrives already proven to pass on the
+PR's own build; and the device wrapper means the QA agent cannot
+take an unlogged action — so the flow author always has complete
+ground truth.
 
 ## Repository map
 

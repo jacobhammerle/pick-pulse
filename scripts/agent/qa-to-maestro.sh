@@ -64,8 +64,11 @@ else
   SLUG=$(echo "$FEATURE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-40)
 fi
 
+SESSION_STARTED=""
 cleanup() {
-  npx --yes eas-cli@latest simulator:stop --non-interactive || true
+  if [ -n "$SESSION_STARTED" ]; then
+    npx --yes eas-cli@latest simulator:stop --non-interactive || true
+  fi
   printf '# managed by eas-cli\n' > .env.eas-simulator
 }
 trap cleanup EXIT
@@ -82,32 +85,49 @@ fi
 # 1. Resolve the simulator build to test.
 #    Priority: explicit BUILD_ID > a build from the PR's head commit
 #    (pr-verify produced one) > newest preview-simulator build.
-if [ -z "${BUILD_ID:-}" ] && [ -n "$PR_SHA" ]; then
+UUID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+BUILD_ID="${BUILD_ID:-}"
+# A wrapping workflow can hand us junk (an uninterpolated expression,
+# or the literal string "undefined" from a skipped job's output).
+# Never let a non-UUID reach build:view.
+if [ -n "$BUILD_ID" ] && ! [[ "$BUILD_ID" =~ $UUID_RE ]]; then
+  echo "WARNING: ignoring invalid BUILD_ID '${BUILD_ID}'." >&2
+  BUILD_ID=""
+fi
+if [ -z "$BUILD_ID" ] && [ -n "$PR_SHA" ]; then
   BUILD_ID=$(npx --yes eas-cli@latest build:list \
     --platform ios --build-profile preview-simulator \
     --status finished --git-commit-hash "$PR_SHA" \
     --limit 1 --json --non-interactive \
     | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-        console.log(JSON.parse(d)[0]?.id ?? '')})")
+        try{console.log(JSON.parse(d)[0]?.id ?? '')}catch{console.log('')}})")
   if [ -z "$BUILD_ID" ]; then
-    echo "WARNING: no finished build found for PR head ${PR_SHA}." >&2
-    echo "Falling back to the newest preview-simulator build, which may" >&2
-    echo "NOT contain the PR's changes. Pass BUILD_ID=<id> from the PR's" >&2
-    echo "pr-verify run to pin the right build." >&2
+    # Testing a build without the PR's changes would produce a bogus
+    # flow, so fail clearly instead of falling back.
+    echo "ERROR: no finished build found for PR head ${PR_SHA}." >&2
+    echo "The PR's pr-verify build may still be running. Wait for it to" >&2
+    echo "finish, or pass BUILD_ID=<id> from the PR's pr-verify run." >&2
+    exit 1
   fi
 fi
-if [ -z "${BUILD_ID:-}" ]; then
+if [ -z "$BUILD_ID" ]; then
   BUILD_ID=$(npx --yes eas-cli@latest build:list \
     --platform ios --build-profile preview-simulator \
     --status finished --limit 1 --json --non-interactive \
     | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-        const b=JSON.parse(d)[0];
-        if(!b){console.error('no finished preview-simulator build found');process.exit(1)}
-        console.log(b.id)})")
+        try{console.log(JSON.parse(d)[0]?.id ?? '')}catch{console.log('')}})")
+fi
+if ! [[ "$BUILD_ID" =~ $UUID_RE ]]; then
+  echo "ERROR: could not resolve a finished preview-simulator build." >&2
+  exit 1
 fi
 APP_URL=$(npx --yes eas-cli@latest build:view "$BUILD_ID" --json | node -e "
   let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-    console.log(JSON.parse(d).artifacts.applicationArchiveUrl)})")
+    try{console.log(JSON.parse(d).artifacts.applicationArchiveUrl ?? '')}catch{console.log('')}})")
+case "$APP_URL" in
+  http*) ;;
+  *) echo "ERROR: could not resolve the artifact URL for build ${BUILD_ID}." >&2; exit 1;;
+esac
 echo "Using build $BUILD_ID"
 # Record the build actually tested so a wrapping EAS workflow can run
 # the generated flow against the same build.
@@ -121,6 +141,7 @@ npx --yes eas-cli@latest simulator:start \
   --package-version "$AGENT_DEVICE_VERSION" \
   --non-interactive \
   --name "QA to Maestro: ${SLUG}"
+SESSION_STARTED=1
 
 # Surface the browser preview URL for the projector.
 PREVIEW_URL=$(npx --yes eas-cli@latest simulator:get --json | node -e "
@@ -274,13 +295,6 @@ echo "$SLUG" > "$QA_DIR/slug.txt"
 echo "$FLOW_PATH" > "$QA_DIR/flow-path.txt"
 if [ -n "$PR_NUMBER" ]; then
   echo "$PR_NUMBER" > "$QA_DIR/pr-number.txt"
-fi
-
-# In PR mode, leave a pointer on the PR (best effort, needs GITHUB_TOKEN).
-if [ -n "$PR_NUMBER" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
-  VERDICT=$(grep -o 'RESULT: .*' "$QA_DIR/qa-report.md" 2>/dev/null | head -1 || echo "RESULT: unknown")
-  node scripts/agent/gh.mjs comment "$PR_NUMBER" "🧪 A QA agent tested this PR on an EAS cloud simulator (${VERDICT}) and a second agent authored a deterministic Maestro flow from the session log: \`${FLOW_PATH}\`." \
-    || echo "PR comment failed; continuing."
 fi
 
 echo ""
