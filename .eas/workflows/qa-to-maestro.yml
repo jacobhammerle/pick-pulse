@@ -130,51 +130,33 @@ jobs:
           set-output build_id "$(cat qa-run/build-id.txt)"
           set-output slug "$SLUG"
           set-output flow_b64 "$(base64 < "$FLOW_PATH" | tr -d '\n')"
-      - name: Suggest the flow (branch PR + comment)
+      - name: Comment the suggested flow on the PR
         run: |
+          # Suggestion only: no branch, no new PR (a new PR would also kick
+          # off pr-verify). The flow travels in the comment; the PR author
+          # adopts it by committing the YAML to their branch.
           FLOW_PATH=$(cat qa-run/flow-path.txt)
-          SLUG=$(cat qa-run/slug.txt)
           PR=$(cat qa-run/pr-number.txt 2>/dev/null || true)
-          VERDICT=$(grep -o 'RESULT: .*' qa-run/qa-report.md 2>/dev/null | head -1 || echo "RESULT: unknown")
-          git config user.name "pickpulse-agent"
-          git config user.email "agent@users.noreply.github.com"
-          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
-          BRANCH="maestro/${SLUG}"
-          # The worker materializes the project as untracked files, so any
-          # branch switch aborts on "would be overwritten by checkout".
-          # Never switch branches: sync the index to HEAD (the files match
-          # its tree, so status becomes clean), commit the flow on top, and
-          # push the commit straight to the branch ref.
-          git reset --mixed HEAD
-          git add "$FLOW_PATH"
-          git commit -m "test: add generated Maestro flow ${SLUG}"
-          if ! git push "$REMOTE" "HEAD:refs/heads/${BRANCH}"; then
-            echo "Push failed; the flow still ran in this workflow."
+          if [ -z "$PR" ]; then
+            echo "Feature mode: no PR to comment on. The suggested flow:"
+            cat "$FLOW_PATH"
             exit 0
           fi
-          SUGGEST_BODY="This flow was authored by an agent from a QA session log on an EAS cloud simulator. Merge it to add the test to the suite (.maestro/flows/ runs via maestro-e2e)."
-          SUGGEST_URL=$(node scripts/agent/gh.mjs create-pr "$BRANCH" \
-            "Add generated Maestro flow: ${SLUG}" "$SUGGEST_BODY" \
-            | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-                console.log(JSON.parse(d.trim().split('\n').pop()).url)})") \
-            || { echo "PR creation failed; branch ${BRANCH} was pushed."; exit 0; }
-          # In PR mode, leave the suggestion on the target PR too.
-          if [ -n "$PR" ]; then
-            FLOW_YAML=$(cat "$FLOW_PATH")
-            node scripts/agent/gh.mjs comment "$PR" "## 🧪 Suggested Maestro regression test
+          VERDICT=$(grep -o 'RESULT: .*' qa-run/qa-report.md 2>/dev/null | head -1 || echo "RESULT: unknown")
+          FLOW_YAML=$(cat "$FLOW_PATH")
+          node scripts/agent/gh.mjs comment "$PR" "## 🧪 Suggested Maestro regression test
 
-          A QA agent tested this PR on an EAS cloud simulator (**${VERDICT}**), and a second agent authored a deterministic Maestro flow from the session log. The same run replayed the flow against the same build.
+          A QA agent tested this PR on an EAS cloud simulator (**${VERDICT}**), and a second agent authored a deterministic Maestro flow from the session log. The same run replayed the flow against the same build to prove it passes.
 
-          Adopt it by merging ${SUGGEST_URL}
+          To adopt it, commit the YAML below to \`${FLOW_PATH}\` on this branch.
 
-          <details><summary><code>${FLOW_PATH}</code></summary>
+          <details open><summary><code>${FLOW_PATH}</code></summary>
 
           \`\`\`yaml
           ${FLOW_YAML}
           \`\`\`
 
           </details>" || echo "PR comment failed; continuing."
-          fi
 
   run_maestro:
     name: Run the generated flow deterministically

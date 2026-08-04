@@ -217,10 +217,10 @@ What the run does:
 3. **Maestro agent.** A fresh Claude Code run reads only the session
    log and the QA report, maps session element refs back to stable
    labels, and writes `.maestro/flows/pr-<N>-<slug>.yaml`.
-4. **Suggest.** The flow is pushed on a `maestro/<slug>` branch with
-   its own PR, and a comment lands on the target PR: the QA verdict
-   plus the full flow YAML inline. Nothing touches the target PR's
-   branch — the author adopts the test by merging the suggestion.
+4. **Suggest.** One comment lands on the target PR: the QA verdict
+   plus the full flow YAML inline. Nothing else is created — no
+   branch, no extra PR, no pr-verify cascade. The author adopts the
+   test by committing the YAML to `.maestro/flows/` on their branch.
 5. **Prove it.** A `maestro` job in the same run executes the new
    flow against the same build, screen recording on. The suggestion
    arrives already proven to pass.
