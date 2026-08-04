@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BOARD, type PropLine } from '../data/board';
-import { usePicks, type Direction } from '../lib/picks-context';
-import { colors } from '../lib/theme';
+import { BOARD, type PropLine } from '../../data/board';
+import { usePicks, type Direction } from '../../lib/picks-context';
+import { colors } from '../../lib/theme';
 
 function DirectionButton({
   prop,
@@ -74,7 +74,7 @@ export default function BoardScreen() {
           <View style={styles.headerRow}>
             <View style={styles.brand}>
               <Image
-                source={require('../../assets/images/logo-mark.png')}
+                source={require('../../../assets/images/logo-mark.png')}
                 style={styles.logoMark}
                 contentFit="contain"
                 accessibilityIgnoresInvertColors
@@ -85,9 +85,6 @@ export default function BoardScreen() {
                 <Text style={styles.headerSubtitle}>Tonight&apos;s Board</Text>
               </View>
             </View>
-            <Link href="/preview" style={styles.previewLink}>
-              ⚙︎
-            </Link>
           </View>
         }
       />
@@ -122,7 +119,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   headerSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 1 },
-  previewLink: { color: colors.textDim, fontSize: 20, padding: 4 },
   card: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
