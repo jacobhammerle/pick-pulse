@@ -19,7 +19,7 @@ export default function TabsLayout() {
         options={{
           title: 'PickPulse',
           tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⌂</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏠</Text>,
         }}
       />
       <Tabs.Screen
@@ -27,7 +27,7 @@ export default function TabsLayout() {
         options={{
           title: 'Settings',
           tabBarLabel: 'Settings',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 18, color }}>⚙︎</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 18 }}>⚙️</Text>,
         }}
       />
     </Tabs>
