@@ -44,11 +44,17 @@ git commit -m "fix: resolve issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
 git push "$REMOTE" "HEAD:${BRANCH}"
 
-PR_BODY="Automated fix for #${ISSUE_NUMBER}.
+PR_BODY="## 🤖 Automated fix for #${ISSUE_NUMBER}
 
-This PR was produced by the agent-fix EAS workflow. Verification on an
-EAS cloud simulator, an EAS Update preview channel, and automated code
-review will be posted below.
+**Issue:** ${ISSUE_TITLE}
+
+This PR was created by the \`agent-fix\` EAS workflow. Claude Code read the issue, implemented a fix, and verified the project compiles.
+
+### Verification (posted below as it completes)
+
+1. 🔍 **Automated code review** — Claude reviews the diff and posts its findings
+2. 📱 **EAS cloud simulator** — the app runs on a cloud simulator; a verdict and screenshot evidence are posted
+3. 🚀 **EAS Update preview** — the fix is published OTA to a per-PR preview channel you can switch to in the app
 
 Closes #${ISSUE_NUMBER}."
 
