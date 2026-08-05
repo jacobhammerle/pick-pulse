@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUpdateInfo, resetChannelAsync, switchChannelAsync } from '../../lib/channel';
 import { colors } from '../../lib/theme';
 
@@ -19,6 +20,7 @@ export default function SettingsScreen() {
   const [channel, setChannel] = useState('');
   const [busy, setBusy] = useState(false);
   const info = getUpdateInfo();
+  const insets = useSafeAreaInsets();
 
   const surf = async () => {
     const target = channel.trim();
@@ -51,7 +53,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
       <Text style={styles.label}>Current state</Text>
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>Channel: {info.channel || '(none)'}</Text>
