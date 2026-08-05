@@ -39,6 +39,17 @@ claude -p "$PROMPT" \
 npx tsc --noEmit
 
 git add -A
+
+# The agent may correctly conclude the code already satisfies the request.
+# That is a success, not a failure: report it and exit cleanly instead of
+# letting the empty `git commit` fail the job.
+if git diff --cached --quiet; then
+  node scripts/agent/gh.mjs comment "$PR_NUMBER" "🤖 Reviewed: _${INSTRUCTION}_
+
+No code change was needed — the current code on \`${BRANCH}\` already satisfies this request. Nothing was pushed."
+  exit 0
+fi
+
 git commit -m "chore: apply reviewer feedback on PR #${PR_NUMBER}"
 git push "$REMOTE" "HEAD:${BRANCH}"
 
