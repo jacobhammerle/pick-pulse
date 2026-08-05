@@ -26,7 +26,7 @@ export default function TabsLayout() {
         name="preview"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⚙︎</Text>,
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⚙️</Text>,
         }}
       />
     </Tabs>
