@@ -3,9 +3,9 @@ name: QA to Maestro
 # On-demand, separate from the main PR flow (pr-verify stays fast).
 # Point it at a PR: a QA agent reads the diff, tests what changed on
 # an EAS cloud simulator, a second agent authors a Maestro flow from
-# the session log, and the run SUGGESTS the test — a maestro/* branch
-# PR plus a comment on the target PR with the flow inline. Nothing is
-# pushed onto the target PR's branch.
+# the session log, and the run SUGGESTS the test — one comment on the
+# target PR with the flow YAML inline. No branch or PR is created, and
+# nothing is pushed onto the target PR's branch.
 on:
   workflow_dispatch:
     inputs:
@@ -105,7 +105,9 @@ jobs:
           FLOW_YAML=$(cat "$FLOW_PATH")
           node scripts/agent/gh.mjs comment "$PR" "## 🧪 Suggested Maestro regression test
 
-          A QA agent tested this PR on an EAS cloud simulator (**${VERDICT}**), and a second agent authored a deterministic Maestro flow from the session log. The same run replayed the flow against the same build to prove it passes.
+          1. 📱 **QA agent** — tested what this PR changed on an EAS cloud simulator (**${VERDICT}**)
+          2. ✍️ **Flow author** — a second agent turned the session log into a deterministic Maestro flow
+          3. ✅ **Proven** — the same run replayed the flow against the same build to confirm it passes
 
           To adopt it, commit the YAML below to \`${FLOW_PATH}\` on this branch.
 
@@ -115,7 +117,9 @@ jobs:
           ${FLOW_YAML}
           \`\`\`
 
-          </details>" || echo "PR comment failed; continuing."
+          </details>
+
+          _Posted by the qa-to-maestro EAS workflow._" || echo "PR comment failed; continuing."
 
   run_maestro:
     name: Run the generated flow deterministically

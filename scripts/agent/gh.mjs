@@ -1,5 +1,5 @@
 // Minimal GitHub REST helper for EAS workflow jobs.
-// Uses GITHUB_TOKEN and GH_REPO (owner/repo) from the environment.
+// Requires: GITHUB_TOKEN, GH_REPO (owner/repo).
 // Usage:
 //   node scripts/agent/gh.mjs create-issue "<title>" "<body>"
 //   node scripts/agent/gh.mjs create-pr "<branch>" "<title>" "<body>"

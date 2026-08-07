@@ -1,5 +1,10 @@
 name: Deploy production
 
+# Ships every push to main. The fingerprint decides how: when a store
+# build with a matching fingerprint exists, publish an OTA update to the
+# production channel; otherwise build a new store binary and submit it
+# to TestFlight.
+
 on:
   push:
     branches:

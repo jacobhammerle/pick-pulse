@@ -1,7 +1,7 @@
 // Turns a TestFlight crash into a GitHub issue, with the symbolicated crash
 // log inline so the agent has a stack trace to work from.
-// Reads CRASH_JSON from the environment: the output of
-// `eas testflight:crashes <id> --type crash --json`.
+// Requires: CRASH_JSON, GITHUB_TOKEN, GH_REPO (the last two via gh.mjs).
+// CRASH_JSON is the output of `eas testflight:crashes <id> --type crash --json`.
 // Logs go to stderr; the issue number is the only thing on stdout.
 import { execFileSync } from 'node:child_process';
 

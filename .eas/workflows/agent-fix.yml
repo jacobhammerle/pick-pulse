@@ -1,5 +1,10 @@
 name: Agent fix
 
+# Turns a GitHub issue into a PR: Claude Code reads the issue, edits the
+# code, verifies tsc passes, and opens a pull request.
+# Dispatched by testflight-feedback.yml / testflight-crash.yml, or run
+# manually: eas workflow:run .eas/workflows/agent-fix.yml -F issue_number=<N>
+
 on:
   workflow_dispatch:
     inputs:

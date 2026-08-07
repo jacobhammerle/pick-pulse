@@ -2,7 +2,7 @@
 # Boots an EAS cloud simulator session, has Claude Code verify the PR
 # on it with agent-device (screenshots + recording), deploys the
 # evidence to EAS Hosting, and emits step outputs.
-# Requires: BUILD_ID, PR_NUMBER, PR_TITLE, ANTHROPIC_API_KEY, EXPO_TOKEN
+# Requires: BUILD_ID, PR_NUMBER, PR_TITLE, CLAUDE_CODE_OAUTH_TOKEN, EXPO_TOKEN
 set -euo pipefail
 
 EVIDENCE_DIR="$(pwd)/evidence"

@@ -1,5 +1,9 @@
 name: Maestro e2e
 
+# Runs the adopted Maestro flows in .maestro/flows/ against a cached
+# (repacked) or freshly built preview-simulator build, screen recording
+# on. On demand: eas workflow:run .eas/workflows/maestro-e2e.yml
+
 on:
   workflow_dispatch: {}
 

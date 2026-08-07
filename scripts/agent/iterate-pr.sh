@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Applies a requested change to a PR branch with Claude Code.
-# Requires: PR_NUMBER, INSTRUCTION, ANTHROPIC_API_KEY, GITHUB_TOKEN, GH_REPO
+# Requires: PR_NUMBER, INSTRUCTION, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
 set -euo pipefail
 
 PR_JSON=$(node scripts/agent/gh.mjs get-pr "$PR_NUMBER")
@@ -44,15 +44,27 @@ git add -A
 # That is a success, not a failure: report it and exit cleanly instead of
 # letting the empty `git commit` fail the job.
 if git diff --cached --quiet; then
-  node scripts/agent/gh.mjs comment "$PR_NUMBER" "🤖 Reviewed: _${INSTRUCTION}_
+  node scripts/agent/gh.mjs comment "$PR_NUMBER" "## 🤖 Agent iteration
 
-No code change was needed — the current code on \`${BRANCH}\` already satisfies this request. Nothing was pushed."
+**Requested:** _${INSTRUCTION}_
+
+✅ **No change needed** — the current code on \`${BRANCH}\` already satisfies this request. Nothing was pushed.
+
+_Posted by the agent-iterate EAS workflow._"
   exit 0
 fi
 
 git commit -m "chore: apply reviewer feedback on PR #${PR_NUMBER}"
 git push "$REMOTE" "HEAD:${BRANCH}"
 
-node scripts/agent/gh.mjs comment "$PR_NUMBER" "🤖 Applied: _${INSTRUCTION}_
+node scripts/agent/gh.mjs comment "$PR_NUMBER" "## 🤖 Agent iteration
 
-Pushed to \`${BRANCH}\`. Verification and review will re-run automatically."
+**Requested:** _${INSTRUCTION}_
+
+✅ **Applied** — pushed to \`${BRANCH}\`. These re-run automatically on the new commit:
+
+1. 🔍 **Automated code review** — Claude re-reviews the updated diff
+2. 📱 **EAS cloud simulator** — the change is re-verified; fresh evidence is posted
+3. 🚀 **EAS Update preview** — the per-PR preview channel is republished
+
+_Posted by the agent-iterate EAS workflow._"

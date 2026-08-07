@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs Claude Code to fix a GitHub issue, then opens a PR.
-# Requires: ISSUE_NUMBER, ANTHROPIC_API_KEY, GITHUB_TOKEN, GH_REPO
+# Requires: ISSUE_NUMBER, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
 set -euo pipefail
 
 BRANCH="fix/issue-${ISSUE_NUMBER}"

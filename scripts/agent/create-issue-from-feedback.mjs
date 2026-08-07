@@ -1,7 +1,8 @@
 // Turns TestFlight beta feedback into a GitHub issue.
-// Reads FEEDBACK_JSON from the environment: the output of
-// `eas testflight:feedback <url> --json`, which the workflow resolves from
-// the app_store_connect.beta_feedback trigger context.
+// Requires: FEEDBACK_JSON, GITHUB_TOKEN, GH_REPO (the last two via gh.mjs).
+// FEEDBACK_JSON is the output of `eas testflight:feedback <id> --json`,
+// which the workflow resolves from the app_store_connect.beta_feedback
+// trigger context.
 // Logs go to stderr; the issue number is the only thing on stdout, so the
 // workflow step can capture it and pass it to set-output.
 import { execFileSync } from 'node:child_process';

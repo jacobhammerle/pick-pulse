@@ -5,6 +5,8 @@
 # only through this wrapper, so the log is a complete, ordered record
 # of the session — the raw material a second agent turns into a
 # deterministic Maestro flow.
+# Requires: an active EAS simulator session (eas simulator:start).
+# Optional: QA_LOG_FILE (default qa-run/device-log.md), AGENT_DEVICE_VERSION.
 set -uo pipefail
 
 QA_LOG_FILE="${QA_LOG_FILE:-qa-run/device-log.md}"

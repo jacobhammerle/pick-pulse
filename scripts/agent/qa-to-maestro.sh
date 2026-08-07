@@ -15,10 +15,10 @@
 # user-visible behavior changed, and tests exactly that. The build is
 # matched to the PR's head commit when possible.
 #
-# Runs locally on a machine with `eas` and `claude` logged in; PR mode
-# also needs GITHUB_TOKEN and GH_REPO.
-# Optional: BUILD_ID env var to pin a specific simulator build;
-# otherwise the newest finished preview-simulator build is used.
+# Requires: `eas` and `claude` logged in (on EAS: EXPO_TOKEN and
+# CLAUDE_CODE_OAUTH_TOKEN). PR mode also requires GITHUB_TOKEN and GH_REPO.
+# Optional: BUILD_ID pins a specific simulator build (otherwise the
+# newest finished preview-simulator build is used), AGENT_DEVICE_VERSION.
 set -euo pipefail
 
 FEATURE="${1:-}"

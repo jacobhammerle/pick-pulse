@@ -1,5 +1,12 @@
 name: Agent iterate
 
+# Applies a reviewer-requested change to an open PR's branch: Claude Code
+# makes the edit, verifies tsc passes, and pushes (or reports that no
+# change was needed). The push re-triggers pr-verify and code-review.
+# Dispatched by the /agent comment bridge
+# (.github/workflows/eas-comment-bridge.yml), or run manually with
+# pr_number and instruction inputs.
+
 on:
   workflow_dispatch:
     inputs:

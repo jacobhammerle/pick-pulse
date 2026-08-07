@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code reviews the PR diff and posts a review comment.
-# Requires: PR_NUMBER, BASE_REF, ANTHROPIC_API_KEY, GITHUB_TOKEN, GH_REPO
+# Requires: PR_NUMBER, BASE_REF, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
 set -euo pipefail
 
 # The EAS checkout is shallow (depth 1), so HEAD has no recorded parents and
@@ -23,14 +23,22 @@ This app ships to iOS only. Do not flag Android or web compatibility
 issues (iOS-only APIs, platform-specific rendering, and similar), and
 do not base a verdict on them.
 
-Write a concise code review in GitHub Markdown to /tmp/review.md:
-1. One-line summary of what the change does.
-2. Correctness: does the change actually fix the stated problem?
-   Check edge cases (payout multipliers only exist for 2-6 picks).
-3. Any real bugs or risks. Skip style nits.
-4. End with a clear verdict line: "✅ LGTM" or "⚠️ Needs changes".
+Write a concise code review in GitHub Markdown to /tmp/review.md, in
+exactly this shape (fill in the angle-bracket parts, keep everything
+else verbatim):
 
-Keep it under 250 words.
+**Verdict:** ✅ LGTM
+
+**Summary** — <one line: what the change does>
+
+1. 🎯 **Correctness** — <does the change fix the stated problem? Name
+   the edge cases you checked; payout multipliers only exist for 2-6
+   picks>
+2. 🐛 **Bugs and risks** — <real problems found, most severe first,
+   or "None found."; skip style nits>
+
+Use "**Verdict:** ⚠️ Needs changes" instead when you find a real
+problem. Keep the whole review under 250 words.
 EOF
 )
 
@@ -43,5 +51,4 @@ node scripts/agent/gh.mjs comment "$PR_NUMBER" "## 🤖 Automated code review
 
 $REVIEW
 
----
 _Posted by the code-review EAS workflow._"

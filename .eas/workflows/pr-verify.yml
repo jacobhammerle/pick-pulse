@@ -1,5 +1,10 @@
 name: PR verify
 
+# Verifies every PR that targets main on a real device: repack (or build)
+# the PR's app, let an agent drive it on an EAS cloud simulator, publish
+# the screenshot evidence to EAS Hosting, ship the PR as an OTA update on
+# channel pr-N, and comment the results on the PR.
+
 on:
   pull_request:
     branches:
@@ -60,6 +65,20 @@ jobs:
       - name: Drive the app and collect evidence
         id: verify
         run: |
+          # Public-repo guard: this step runs scripts from the PR's checked
+          # out branch with this project's secrets in the environment. EAS
+          # does not document how fork PRs are handled, so refuse any PR
+          # whose head repo is detectably not this repo. When the field is
+          # empty or uninterpolated we cannot tell, so continue (same-repo
+          # PRs are the normal case and blocking them would break the
+          # pipeline).
+          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          BASE_REPO="${{ github.repository }}"
+          case "$HEAD_REPO" in
+            ''|*'${{'*) echo "Head repo unknown; continuing." ;;
+            "$BASE_REPO") ;;
+            *) echo "PR head is fork '$HEAD_REPO'; refusing to run agent scripts with secrets."; exit 1 ;;
+          esac
           # env: blocks pass template expressions through as literal text on
           # EAS right now, so resolve the context in the run script instead.
           # The PR title is free text, so read it via a quoted heredoc.
@@ -92,8 +111,7 @@ jobs:
 
         **Verdict:** ${{ needs.verify_on_simulator.outputs.verdict }}
 
-        - **Evidence site:** ${{ needs.verify_on_simulator.outputs.evidence_url }}
-        - **Preview channel:** `pr-${{ github.event.pull_request.number }}`
+        - 🖼️ **Evidence site** — screenshots from the simulator run: ${{ needs.verify_on_simulator.outputs.evidence_url }}
+        - 📲 **Preview channel** — `pr-${{ github.event.pull_request.number }}`: open PickPulse → Settings, enter the channel name, tap **Switch channel** to try this PR on your phone
 
-        To try this on your phone, open PickPulse, tap the gear icon, enter
-        `pr-${{ github.event.pull_request.number }}`, then tap Switch channel.
+        _Posted by the pr-verify EAS workflow._
