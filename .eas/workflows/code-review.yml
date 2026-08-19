@@ -27,17 +27,21 @@ jobs:
           # Public-repo guard: this step runs scripts from the PR's checked
           # out branch with this project's secrets in the environment. EAS
           # does not document how fork PRs are handled, so refuse any PR
-          # whose head repo is detectably not this repo. When the field is
-          # empty or uninterpolated we cannot tell, so continue (same-repo
-          # PRs are the normal case and blocking them would break the
-          # pipeline).
+          # whose head repo is detectably not the base repo. Both names come
+          # from the same pull_request webhook payload; github.repository is
+          # optional in the EAS context and arrives empty, which made this
+          # guard reject same-repo PRs. When either name is empty or
+          # uninterpolated we cannot tell, so continue (same-repo PRs are the
+          # normal case and blocking them would break the pipeline).
           HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
-          BASE_REPO="${{ github.repository }}"
-          case "$HEAD_REPO" in
-            ''|*'${{'*) echo "Head repo unknown; continuing." ;;
-            "$BASE_REPO") ;;
-            *) echo "PR head is fork '$HEAD_REPO'; refusing to run agent scripts with secrets."; exit 1 ;;
-          esac
+          BASE_REPO="${{ github.event.pull_request.base.repo.full_name }}"
+          case "$HEAD_REPO$BASE_REPO" in *'${{'*) HEAD_REPO=''; BASE_REPO='' ;; esac
+          if [ -z "$HEAD_REPO" ] || [ -z "$BASE_REPO" ]; then
+            echo "Repo names unknown; continuing."
+          elif [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "PR head is fork '$HEAD_REPO'; refusing to run agent scripts with secrets."
+            exit 1
+          fi
           # env: blocks pass template expressions through as literal text on
           # EAS right now, so resolve the context in the run script instead.
           export PR_NUMBER="${{ github.event.pull_request.number }}"
