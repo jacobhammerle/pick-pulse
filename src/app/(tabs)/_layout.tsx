@@ -1,5 +1,4 @@
 import { Tabs } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Text } from 'react-native';
 import { colors } from '../../lib/theme';
 
@@ -21,12 +20,7 @@ export default function TabsLayout() {
           title: 'PickPulse',
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, size }) => (
-            <SymbolView
-              name="house.fill"
-              size={size}
-              tintColor={color}
-              fallback={<Text style={{ color, fontSize: size }}>🏠</Text>}
-            />
+            <Text style={{ color, fontSize: size }}>🏠</Text>
           ),
         }}
       />
@@ -36,12 +30,7 @@ export default function TabsLayout() {
           title: 'Settings',
           tabBarLabel: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <SymbolView
-              name="gearshape.fill"
-              size={size}
-              tintColor={color}
-              fallback={<Text style={{ color, fontSize: size }}>⚙️</Text>}
-            />
+            <Text style={{ color, fontSize: size }}>⚙️</Text>
           ),
         }}
       />
