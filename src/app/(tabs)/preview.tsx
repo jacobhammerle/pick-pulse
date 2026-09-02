@@ -7,8 +7,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { getUpdateInfo, resetChannelAsync, switchChannelAsync } from '../lib/channel';
-import { colors } from '../lib/theme';
+import { getUpdateInfo, resetChannelAsync, switchChannelAsync } from '../../lib/channel';
+import { colors } from '../../lib/theme';
 
 /**
  * Channel surfing screen. During the demo, enter the PR channel
