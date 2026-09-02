@@ -30,10 +30,10 @@ if [ -z "$FEATURE" ] && [ -z "$PR_NUMBER" ]; then
   exit 1
 fi
 
-# agent-device@0.20.4 is broken (missing @agent-device/ad-script).
-# Pin 0.20.3 for both the remote daemon (--package-version) and the
-# local CLI until it is fixed. device.sh reads the same variable.
-export AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-0.20.3}"
+# agent-device version for the remote daemon (--package-version) and
+# the local CLI; device.sh reads the same variable. Default to latest;
+# override to pin a known-good one.
+export AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-latest}"
 
 BUNDLE_ID="com.jacobhammerle.pickpulse"
 
@@ -121,24 +121,20 @@ if ! [[ "$BUILD_ID" =~ $UUID_RE ]]; then
   echo "ERROR: could not resolve a finished preview-simulator build." >&2
   exit 1
 fi
-APP_URL=$(npx --yes eas-cli@latest build:view "$BUILD_ID" --json | node -e "
-  let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-    try{console.log(JSON.parse(d).artifacts.applicationArchiveUrl ?? '')}catch{console.log('')}})")
-case "$APP_URL" in
-  http*) ;;
-  *) echo "ERROR: could not resolve the artifact URL for build ${BUILD_ID}." >&2; exit 1;;
-esac
 echo "Using build $BUILD_ID"
 # Record the build actually tested so a wrapping EAS workflow can run
 # the generated flow against the same build.
 echo "$BUILD_ID" > "$QA_DIR/build-id.txt"
 
-# 2. Start the cloud simulator session and install the app.
+# 2. Start the cloud simulator session. --build-id makes the runner
+#    install and launch the build while the session boots — no
+#    build:view / install-from-source round trip.
 printf '# managed by eas-cli\n' > .env.eas-simulator
 npx --yes eas-cli@latest simulator:start \
   --platform ios \
   --type agent-device \
   --package-version "$AGENT_DEVICE_VERSION" \
+  --build-id "$BUILD_ID" \
   --non-interactive \
   --name "QA to Maestro: ${SLUG}"
 SESSION_STARTED=1
@@ -157,9 +153,6 @@ if [ -n "$PREVIEW_URL" ]; then
   echo ""
 fi
 
-npx --yes eas-cli@latest simulator:exec \
-  npx "agent-device@${AGENT_DEVICE_VERSION}" install-from-source "$APP_URL" --platform ios
-
 # 3. Agent 1: QA the feature. Every device command goes through
 #    scripts/agent/device.sh, which appends it to $QA_LOG_FILE.
 QA_PROMPT=$(cat <<EOF
@@ -176,7 +169,10 @@ or agent-device directly):
 
 Available verbs: open <bundle-id|deep-link> --platform ios,
 snapshot -i, press <ref|selector>, fill <ref> "text",
-screenshot <path>. The tap verb is "press", never "tap".
+screenshot <path>. The tap verb is "press", never "tap". Append
+--settle to press/fill: it waits for the UI to go quiet and prints the
+UI diff. Still run snapshot -i before and after every action as
+instructed below — the log needs full trees, not only diffs.
 
 Do this:
 1. Open the app: bash scripts/agent/device.sh open ${BUNDLE_ID} --platform ios

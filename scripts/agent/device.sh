@@ -12,9 +12,8 @@ set -uo pipefail
 QA_LOG_FILE="${QA_LOG_FILE:-qa-run/device-log.md}"
 mkdir -p "$(dirname "$QA_LOG_FILE")"
 
-# agent-device@0.20.4 is broken (missing @agent-device/ad-script).
-# Pin 0.20.3 until it is fixed, then drop the pin back to latest.
-AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-0.20.3}"
+# agent-device version. Default to latest; override to pin a known-good one.
+AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-latest}"
 
 TS=$(date +%H:%M:%S)
 OUTPUT=$(npx --yes eas-cli@latest simulator:exec npx "agent-device@${AGENT_DEVICE_VERSION}" "$@" 2>&1)

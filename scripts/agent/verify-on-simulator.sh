@@ -8,10 +8,9 @@ set -euo pipefail
 EVIDENCE_DIR="$(pwd)/evidence"
 mkdir -p "$EVIDENCE_DIR"
 
-# agent-device@0.20.4 is broken (missing @agent-device/ad-script).
-# Pin 0.20.3 for both the remote daemon (--package-version) and the
-# CLI calls until it is fixed, then drop the pin back to latest.
-AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-0.20.3}"
+# agent-device version for the remote daemon (--package-version) and
+# the CLI calls. Default to latest; override to pin a known-good one.
+AGENT_DEVICE_VERSION="${AGENT_DEVICE_VERSION:-latest}"
 
 cleanup() {
   npx --yes eas-cli@latest simulator:stop --non-interactive || true
@@ -23,23 +22,17 @@ trap cleanup EXIT
 #    the sessions list reads like a history of verified PRs.
 SESSION_NAME=$(printf 'PR #%s verify: %s' "$PR_NUMBER" "$PR_TITLE" | cut -c1-50)
 printf '# managed by eas-cli\n' > .env.eas-simulator
+# --build-id makes the runner install and launch the build while the
+# session boots — no build:view / install-from-source round trip.
 npx --yes eas-cli@latest simulator:start \
   --platform ios \
   --type agent-device \
   --package-version "$AGENT_DEVICE_VERSION" \
+  --build-id "$BUILD_ID" \
   --non-interactive \
   --name "$SESSION_NAME"
 
-# 2. Get the build artifact URL and install it on the remote simulator.
-APP_URL=$(npx --yes eas-cli@latest build:view "$BUILD_ID" --json | node -e "
-  let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-    const b=JSON.parse(d);
-    console.log(b.artifacts.applicationArchiveUrl);
-  })")
-npx --yes eas-cli@latest simulator:exec \
-  npx "agent-device@${AGENT_DEVICE_VERSION}" install-from-source "$APP_URL" --platform ios
-
-# 3. Let Claude Code drive the app and collect evidence.
+# 2. Let Claude Code drive the app and collect evidence.
 PROMPT=$(cat <<EOF
 You are verifying a bug fix on a remote iOS simulator for PR #${PR_NUMBER}:
 "${PR_TITLE}".
@@ -51,7 +44,10 @@ eas-cli. Every device command must be run exactly like this:
   npx --yes eas-cli@latest simulator:exec npx agent-device@${AGENT_DEVICE_VERSION} <verb> [args]
 
 Available verbs: apps, open, snapshot -i, press <ref>, fill <ref> "text",
-screenshot <path>. The tap verb is "press", never "tap".
+screenshot <path>. The tap verb is "press", never "tap". Append
+--settle to press/fill: it waits for the UI to go quiet and prints the
+UI diff, so you only need snapshot -i when the diff lacks your next
+target.
 
 Context: before this PR, Settings was only reachable through a small
 gear (⚙︎) link in the top-right of the home header. The PR moves it
@@ -82,7 +78,7 @@ claude -p "$PROMPT" \
 
 VERDICT=$(cat "$EVIDENCE_DIR/verdict.txt" 2>/dev/null || echo "FAIL: no verdict written")
 
-# 4. Build a small static evidence site and deploy it to EAS Hosting.
+# 3. Build a small static evidence site and deploy it to EAS Hosting.
 node scripts/agent/build-evidence-site.mjs "$EVIDENCE_DIR" "$PR_NUMBER" "$VERDICT"
 # eas deploy path.join()s --export-dir onto the project dir, so an absolute
 # path gets doubled and "not found". Pass it relative to the project root.
@@ -95,6 +91,6 @@ EVIDENCE_URL=$(node -e "
   console.log(d.url ?? d.deploymentUrl ?? '');
 " "$DEPLOY_JSON")
 
-# 5. Expose outputs to the github-comment job.
+# 4. Expose outputs to the github-comment job.
 set-output evidence_url "$EVIDENCE_URL"
 set-output verdict "$VERDICT"
