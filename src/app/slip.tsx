@@ -87,6 +87,19 @@ export default function SlipScreen() {
             </Pressable>
           ))}
         </View>
+
+        {picks.length > 0 && (
+          <Pressable
+            testID="clear-all"
+            style={styles.clearAll}
+            onPress={() => {
+              clearPicks();
+              router.back();
+            }}
+          >
+            <Text style={styles.clearAllText}>Clear all</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -153,6 +166,15 @@ const styles = StyleSheet.create({
   entryButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   entryText: { color: colors.text, fontWeight: '700' },
   entryTextActive: { color: colors.bg },
+  clearAll: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  clearAllText: { color: colors.danger, fontWeight: '700' },
   footer: {
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
