@@ -110,18 +110,20 @@ jobs:
     after: [repack_simulator_build, build_simulator_build]
     type: custom
     environment: production
-    # Expression interpolation works in job-level env, not step-level.
+    # Expression interpolation works in job-level env, not step-level. An
+    # env value must be a string: optional contexts get a '' fallback, since
+    # an undefined value fails job validation ("[env.X]: Invalid input").
     env:
       BUILD_ID: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
       BUILD_STATUS: ${{ after.build_simulator_build.status }}
       REPACK_STATUS: ${{ after.repack_simulator_build.status }}
       PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
       # The raw comment on comment runs; the script strips the prefix.
-      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body }}
-      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-      BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body || '' }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+      BASE_REPO: ${{ github.event.pull_request.base.repo.full_name || '' }}
       UPDATE_CHANNEL: pr-${{ inputs.pr_number || github.event.pull_request.number }}
-      UPDATE_GROUP_ID: ${{ needs.publish_pr_update.outputs.first_update_group_id }}
+      UPDATE_GROUP_ID: ${{ needs.publish_pr_update.outputs.first_update_group_id || '' }}
     outputs:
       evidence_url: ${{ steps.verify.outputs.evidence_url }}
       verdict: ${{ steps.verify.outputs.verdict }}

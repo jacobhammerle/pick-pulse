@@ -104,16 +104,18 @@ jobs:
     after: [repack_simulator_build, build_simulator_build]
     type: custom
     environment: production
-    # Expression interpolation works in job-level env, not step-level.
+    # Expression interpolation works in job-level env, not step-level. An
+    # env value must be a string: optional contexts get a '' fallback, since
+    # an undefined value fails job validation ("[env.X]: Invalid input").
     env:
       BUILD_ID: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
       BUILD_STATUS: ${{ after.build_simulator_build.status }}
       REPACK_STATUS: ${{ after.repack_simulator_build.status }}
       PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
       # The raw comment on comment runs; the script parses minutes + device.
-      PREVIEW_ARGS: ${{ github.event.comment.body }}
+      PREVIEW_ARGS: ${{ github.event.comment.body || '' }}
       DURATION_MINUTES: ${{ inputs.duration_minutes || '30' }}
-      DEVICE: ${{ inputs.device }}
+      DEVICE: ${{ inputs.device || '' }}
     outputs:
       preview_url: ${{ steps.session.outputs.preview_url }}
       session_id: ${{ steps.session.outputs.session_id }}

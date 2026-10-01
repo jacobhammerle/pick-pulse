@@ -34,10 +34,12 @@ jobs:
     name: 1. Fix the issue and open a PR
     type: custom
     environment: production
-    # Expression interpolation works in job-level env, not step-level.
+    # Expression interpolation works in job-level env, not step-level. An
+    # env value must be a string: optional contexts get a '' fallback, since
+    # an undefined value fails job validation ("[env.X]: Invalid input").
     env:
       ISSUE_NUMBER: ${{ inputs.issue_number }}
-      INSTRUCTION: ${{ inputs.instruction }}
+      INSTRUCTION: ${{ inputs.instruction || '' }}
     steps:
       - uses: eas/checkout
       - uses: eas/install_node_modules

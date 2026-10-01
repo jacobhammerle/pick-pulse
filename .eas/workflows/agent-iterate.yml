@@ -42,11 +42,13 @@ jobs:
     # Gate: a comment-triggered run proceeds only for trusted authors.
     # Manual runs have no comment and pass.
     if: ${{ !github.event.comment.body || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' }}
-    # Expression interpolation works in job-level env, not step-level.
+    # Expression interpolation works in job-level env, not step-level. An
+    # env value must be a string: optional contexts get a '' fallback, since
+    # an undefined value fails job validation ("[env.X]: Invalid input").
     env:
       PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
       # The raw comment on comment runs; the script strips the prefix.
-      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body }}
+      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body || '' }}
     steps:
       - uses: eas/checkout
       - uses: eas/install_node_modules
