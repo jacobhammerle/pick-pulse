@@ -1,13 +1,28 @@
+# ──────────────────────────────────────────────────────────────────────
+# Agent iterate
+#
+# Comment "@expo-bot <change>" on a pull request (for example
+# "@expo-bot make the slip bar purple") and this workflow applies the
+# change to the PR branch: Claude Code makes the edit, a tsc gate must
+# pass, and the result is committed and pushed (or the agent reports that
+# no change was needed). The push re-triggers pr-verify and code-review,
+# so review + verification follow by themselves.
+#
+# The trigger excludes the other commands (review, preview, qa), which
+# have their own workflows. Comment-triggered runs only proceed for the
+# repo owner, org members, and collaborators (the gate on the job). Run
+# manually:
+#   eas workflow:run .eas/workflows/agent-iterate.yml \
+#     -F pr_number=<N> -F instruction="<change>"
+#
+# Env vars required (EAS environment variables, production environment):
+#   CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
+# ──────────────────────────────────────────────────────────────────────
 name: Agent iterate
 
-# Applies a reviewer-requested change to an open PR's branch: Claude Code
-# makes the edit, verifies tsc passes, and pushes (or reports that no
-# change was needed). The push re-triggers pr-verify and code-review.
-# Dispatched by the /agent comment bridge
-# (.github/workflows/eas-comment-bridge.yml), or run manually with
-# pr_number and instruction inputs.
-
 on:
+  pull_request_comment:
+    if: ${{ startsWith(github.event.comment.body, '@expo-bot ') && !startsWith(github.event.comment.body, '@expo-bot review') && !startsWith(github.event.comment.body, '@expo-bot preview') && !startsWith(github.event.comment.body, '@expo-bot qa') }}
   workflow_dispatch:
     inputs:
       pr_number:
@@ -21,9 +36,17 @@ on:
 
 jobs:
   iterate_pr:
-    name: Apply the requested change
+    name: 1. Apply the requested change
     type: custom
     environment: production
+    # Gate: a comment-triggered run proceeds only for trusted authors.
+    # Manual runs have no comment and pass.
+    if: ${{ !github.event.comment.body || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' }}
+    # Expression interpolation works in job-level env, not step-level.
+    env:
+      PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+      # The raw comment on comment runs; the script strips the prefix.
+      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body }}
     steps:
       - uses: eas/checkout
       - uses: eas/install_node_modules
@@ -31,19 +54,10 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Apply the change and push
         run: |
-          # env: blocks pass template expressions through as literal text on
-          # EAS right now, so resolve inputs in the run script instead. The
-          # instruction is free text, so read it via a quoted heredoc.
-          export PR_NUMBER="${{ inputs.pr_number }}"
-          INSTRUCTION=$(cat <<'INSTRUCTION_EOF'
-          ${{ inputs.instruction }}
-          INSTRUCTION_EOF
-          )
-          export INSTRUCTION
-          # A numeric test catches every uninterpolated form, not just one
-          # particular context name.
+          set -euo pipefail
+          # A numeric test catches every uninterpolated form.
           if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
-            echo "pr_number input not interpolated; cannot continue."
+            echo "PR number not interpolated ('$PR_NUMBER'); cannot continue."
             exit 1
           fi
           bash scripts/agent/iterate-pr.sh

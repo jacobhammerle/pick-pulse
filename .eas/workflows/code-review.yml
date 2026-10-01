@@ -1,12 +1,35 @@
+# ──────────────────────────────────────────────────────────────────────
+# Code review
+#
+# Every pull request into main — and every "@expo-bot review [guidance]"
+# comment on one — gets a code review: Claude Code reads the diff and
+# posts a comment with a clear verdict and the notes folded away.
+#
+# Comment-triggered runs only proceed for the repo owner, org members, and
+# collaborators (the gate on the job). Run manually:
+#   eas workflow:run .eas/workflows/code-review.yml -F pr_number=<N>
+#
+# Env vars required (EAS environment variables, production environment):
+#   CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
+# ──────────────────────────────────────────────────────────────────────
 name: Code review
-
-# Reviews every PR that targets main: Claude Code reads the diff and
-# posts a review comment ending in a clear verdict.
 
 on:
   pull_request:
     branches:
       - main
+  pull_request_comment:
+    if: ${{ startsWith(github.event.comment.body, '@expo-bot review') || github.event.comment.body == '@expo-bot' }}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: The pull request number to review
+        type: string
+        required: true
+      instruction:
+        description: Optional reviewer guidance (what to focus on)
+        type: string
+        default: ""
 
 concurrency:
   cancel_in_progress: true
@@ -14,9 +37,19 @@ concurrency:
 
 jobs:
   review_pr:
-    name: Review the PR diff
+    name: 1. Review the PR diff
     type: custom
     environment: production
+    # Gate: a comment-triggered run proceeds only for trusted authors. Push
+    # and manual runs have no comment and pass.
+    if: ${{ !github.event.comment.body || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' }}
+    # Expression interpolation works in job-level env, not step-level.
+    env:
+      PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+      # The raw comment on comment runs; the script strips the prefix.
+      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
     steps:
       - uses: eas/checkout
       - uses: eas/install_node_modules
@@ -24,26 +57,10 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Review the diff and post a comment
         run: |
-          # Public-repo guard: this step runs scripts from the PR's checked
-          # out branch with this project's secrets in the environment. EAS
-          # does not document how fork PRs are handled, so refuse any PR
-          # whose head repo is detectably not the base repo. Both names come
-          # from the same pull_request webhook payload; github.repository is
-          # optional in the EAS context and arrives empty, which made this
-          # guard reject same-repo PRs. When either name is empty or
-          # uninterpolated we cannot tell, so continue (same-repo PRs are the
-          # normal case and blocking them would break the pipeline).
-          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
-          BASE_REPO="${{ github.event.pull_request.base.repo.full_name }}"
-          case "$HEAD_REPO$BASE_REPO" in *'${{'*) HEAD_REPO=''; BASE_REPO='' ;; esac
-          if [ -z "$HEAD_REPO" ] || [ -z "$BASE_REPO" ]; then
-            echo "Repo names unknown; continuing."
-          elif [ "$HEAD_REPO" != "$BASE_REPO" ]; then
-            echo "PR head is fork '$HEAD_REPO'; refusing to run agent scripts with secrets."
+          set -euo pipefail
+          # A numeric test catches every uninterpolated form.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "PR number not interpolated ('$PR_NUMBER'); cannot continue."
             exit 1
           fi
-          # env: blocks pass template expressions through as literal text on
-          # EAS right now, so resolve the context in the run script instead.
-          export PR_NUMBER="${{ github.event.pull_request.number }}"
-          export BASE_REF="${{ github.event.pull_request.base.ref }}"
           bash scripts/agent/review-pr.sh

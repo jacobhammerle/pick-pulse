@@ -1,0 +1,150 @@
+# ──────────────────────────────────────────────────────────────────────
+# PR live preview
+#
+# Comment "@expo-bot preview [minutes] [device]" on a pull request and
+# this workflow boots a cloud iOS simulator running that PR's app, then
+# comments a browser link on the PR so anyone can drive it. Examples:
+#
+#   @expo-bot preview                     runner default device, 30 min
+#   @expo-bot preview 45                  45-minute session
+#   @expo-bot preview iPhone 16 Pro       a specific iOS Simulator device
+#   @expo-bot preview iPhone 16 Pro for 45
+#
+#   1. fingerprint: hash the PR's native code
+#   2. get-build:   find a fingerprint-matched simulator binary
+#   3. build:       or build one when the native code changed
+#   4. repack:      inject the PR's JS into the found binary
+#   5. session:     boot the device (simulator:start --build-id), comment
+#                   the preview link
+#
+# The device name goes straight to `eas simulator:start --device`. The
+# runner does not reject an unknown name, so the comment reports the
+# requested device. Comment-triggered runs only proceed for the repo
+# owner, org members, and collaborators (the gate on job 1). Run manually
+# from a checkout of the PR branch:
+#   eas workflow:run .eas/workflows/pr-live-preview.yml -F pr_number=<N> \
+#     -F duration_minutes=45 -F device="iPhone 16 Pro"
+#
+# Env vars required (EAS environment variables, production environment):
+#   EXPO_TOKEN, GITHUB_TOKEN, GH_REPO
+# ──────────────────────────────────────────────────────────────────────
+name: PR live preview
+
+# A new "@expo-bot preview" on the same PR replaces the run in progress.
+# Note: cancellation does not stop an already-booted simulator session;
+# sessions always end at their max duration.
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+on:
+  pull_request_comment:
+    if: ${{ startsWith(github.event.comment.body, '@expo-bot preview') }}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: The pull request number to preview
+        type: string
+        required: true
+      # String, not number: `eas workflow:run --input` sends every value as
+      # a string, and the API rejects a string for a number-typed input.
+      duration_minutes:
+        description: Minutes before the simulator session auto-stops
+        type: string
+        default: "30"
+      device:
+        description: iOS Simulator device name, e.g. "iPhone 16 Pro". Empty picks the runner's default.
+        type: string
+        default: ""
+
+jobs:
+  fingerprint:
+    name: 1. Fingerprint the project
+    type: fingerprint
+    # Gate: a comment-triggered run proceeds only for trusted authors.
+    # Manual runs have no comment and pass. Every other job needs this
+    # one, so a skipped gate skips the whole run.
+    if: ${{ !github.event.comment.body || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' }}
+
+  find_simulator_build:
+    name: 2. Find a matching simulator build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: preview-simulator
+      simulator: true
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  build_simulator_build:
+    name: 3. Build a new simulator app (native changed)
+    needs: [find_simulator_build]
+    if: ${{ !needs.find_simulator_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview-simulator
+
+  # A found binary carries the JS it was built with; repack swaps in the
+  # PR's JS. A fresh build (above) already has it, so no repack then.
+  repack_simulator_build:
+    name: 4. Repack the cached simulator build with the PR's JS
+    needs: [find_simulator_build]
+    if: ${{ needs.find_simulator_build.outputs.build_id }}
+    type: repack
+    params:
+      build_id: ${{ needs.find_simulator_build.outputs.build_id }}
+      profile: preview-simulator
+      js_bundle_only: true
+
+  session:
+    name: 5. Boot the cloud simulator and comment the link
+    needs: [fingerprint]
+    after: [repack_simulator_build, build_simulator_build]
+    type: custom
+    environment: production
+    # Expression interpolation works in job-level env, not step-level.
+    env:
+      BUILD_ID: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
+      BUILD_STATUS: ${{ after.build_simulator_build.status }}
+      REPACK_STATUS: ${{ after.repack_simulator_build.status }}
+      PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+      # The raw comment on comment runs; the script parses minutes + device.
+      PREVIEW_ARGS: ${{ github.event.comment.body }}
+      DURATION_MINUTES: ${{ inputs.duration_minutes || '30' }}
+      DEVICE: ${{ inputs.device }}
+    outputs:
+      preview_url: ${{ steps.session.outputs.preview_url }}
+      session_id: ${{ steps.session.outputs.session_id }}
+      device_label: ${{ steps.session.outputs.device_label }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - id: session
+        name: Start the session and comment on the PR
+        run: |
+          set -euo pipefail
+          # A numeric test catches every uninterpolated form.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "PR number not interpolated ('$PR_NUMBER'); cannot continue."
+            exit 1
+          fi
+          bash scripts/agent/pr-live-preview.sh
+
+  preview_link:
+    name: 6. Preview link
+    type: doc
+    needs: [session]
+    params:
+      md: |
+        # 📱 PR #${{ inputs.pr_number || github.event.pull_request.number }} live preview is ready
+
+        **[Open the ${{ needs.session.outputs.device_label }} in your browser](${{ needs.session.outputs.preview_url }})**
+
+        The link was also posted as a comment on the PR. The session stops by
+        itself at its duration, or stop it early with:
+
+        ```
+        eas simulator:stop --id ${{ needs.session.outputs.session_id }}
+        ```

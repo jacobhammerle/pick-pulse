@@ -1,12 +1,28 @@
+# ──────────────────────────────────────────────────────────────────────
+# QA to Maestro
+#
+# On demand, separate from the main PR flow (pr-verify stays fast).
+# Comment "@expo-bot qa [guidance]" on a pull request, or run it by hand:
+# a QA agent reads the PR diff, tests what changed on an EAS cloud
+# simulator (every device command logged through scripts/agent/device.sh),
+# a second agent turns the session log into a deterministic Maestro flow,
+# a maestro job proves the flow passes against the same build, and the
+# run SUGGESTS the test — one comment on the PR with the flow YAML inline.
+# No branch or PR is created, and nothing is pushed onto the PR's branch.
+#
+# Comment-triggered runs only proceed for the repo owner, org members, and
+# collaborators (the gate on job 1). Run manually:
+#   eas workflow:run .eas/workflows/qa-to-maestro.yml -F pr_number=<N>
+#   eas workflow:run .eas/workflows/qa-to-maestro.yml -F feature="the slip"
+#
+# Env vars required (EAS environment variables, production environment):
+#   EXPO_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
+# ──────────────────────────────────────────────────────────────────────
 name: QA to Maestro
 
-# On-demand, separate from the main PR flow (pr-verify stays fast).
-# Point it at a PR: a QA agent reads the diff, tests what changed on
-# an EAS cloud simulator, a second agent authors a Maestro flow from
-# the session log, and the run SUGGESTS the test — one comment on the
-# target PR with the flow YAML inline. No branch or PR is created, and
-# nothing is pushed onto the target PR's branch.
 on:
+  pull_request_comment:
+    if: ${{ startsWith(github.event.comment.body, '@expo-bot qa') }}
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,11 +48,14 @@ on:
 # build. Pass build_id to override either.
 jobs:
   qa_and_author:
-    name: QA agent explores, second agent writes the Maestro flow
+    name: 1. QA agent explores, second agent writes the Maestro flow
     type: custom
     # production, not preview: GITHUB_TOKEN only exists there, and PR mode
     # (gh.mjs) needs it — same reason agent-fix and code-review use it.
     environment: production
+    # Gate: a comment-triggered run proceeds only for trusted authors.
+    # Manual runs have no comment and pass.
+    if: ${{ !github.event.comment.body || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' }}
     outputs:
       build_id: ${{ steps.qa.outputs.build_id }}
       slug: ${{ steps.qa.outputs.slug }}
@@ -52,14 +71,16 @@ jobs:
           # env: blocks pass template expressions through as literal text on
           # EAS right now, so resolve the context in the run script instead.
           # Free-text inputs are read via quoted heredocs.
+          # On an "@expo-bot qa" comment run the PR number comes from the
+          # comment event and the guidance is the comment itself.
           BUILD_ID_INPUT="${{ inputs.build_id }}"
-          PR_NUMBER_INPUT="${{ inputs.pr_number }}"
+          PR_NUMBER_INPUT="${{ inputs.pr_number || github.event.pull_request.number }}"
           FEATURE=$(cat <<'FEATURE_EOF'
           ${{ inputs.feature }}
           FEATURE_EOF
           )
           GUIDANCE=$(cat <<'GUIDANCE_EOF'
-          ${{ inputs.guidance }}
+          ${{ inputs.guidance || github.event.comment.body }}
           GUIDANCE_EOF
           )
           # A numeric test catches every uninterpolated or empty form.
@@ -67,6 +88,9 @@ jobs:
           case "$FEATURE" in *'${{'*) FEATURE="";; esac
           case "$GUIDANCE" in *'${{'*) GUIDANCE="";; esac
           case "$BUILD_ID_INPUT" in *'${{'*) BUILD_ID_INPUT="";; esac
+          # Strip the "@expo-bot qa" prefix when the guidance is the comment.
+          . scripts/agent/comment-lib.sh
+          GUIDANCE=$(bot_instruction "$GUIDANCE" qa)
 
           # Build choice: an explicit build_id input wins; otherwise the
           # script resolves it (PR mode: the PR head commit's build;
@@ -122,7 +146,7 @@ jobs:
           _Posted by the qa-to-maestro EAS workflow._" || echo "PR comment failed; continuing."
 
   run_maestro:
-    name: Run the generated flow deterministically
+    name: 2. Run the generated flow deterministically
     needs: [qa_and_author]
     if: ${{ needs.qa_and_author.outputs.flow_b64 }}
     type: maestro

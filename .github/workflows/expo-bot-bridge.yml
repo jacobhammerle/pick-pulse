@@ -1,0 +1,128 @@
+name: Expo bot bridge
+
+# The "@expo-bot" commands on pull requests run natively on EAS: each PR
+# workflow in .eas/workflows/ has a pull_request_comment trigger
+# (review, preview, qa, or a change). This small GitHub Action covers the
+# two things EAS cannot do from a comment:
+#
+#   1. react 👀 to every @expo-bot comment, on PRs and issues alike, so
+#      the author knows it was heard while the EAS run spins up
+#   2. route "@expo-bot [guidance]" comments on ISSUES (not PRs) to the
+#      agent-fix EAS workflow, which opens a fix PR; EAS has no
+#      issue-comment trigger
+#
+# The `if` conditions below are a security gate. Only the repository
+# owner, organization members, and collaborators can drive the bot. Do
+# not remove them. Without them, anyone who can comment could run agent
+# workflows against this repository with your credentials.
+#
+# Required repository secrets:
+#   EXPO_TOKEN       Expo access token that can run EAS workflows
+#   EAS_PROJECT_ID   the extra.eas.projectId from app.json
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  react:
+    name: Acknowledge the @expo-bot comment
+    runs-on: ubuntu-latest
+    if: >-
+      startsWith(github.event.comment.body, '@expo-bot') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    steps:
+      - name: Add an eyes reaction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=eyes >/dev/null || true
+
+  route_issue:
+    name: Forward the issue comment to agent-fix on EAS
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '@expo-bot') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Extract the guidance
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Issues have no modes: everything after @expo-bot on the first
+          # line is guidance for the fix agent (for example repro steps).
+          INSTRUCTION=$(printf '%s' "$COMMENT_BODY" | head -n 1 | sed -E 's#^@expo-bot[[:space:]]*##' | sed -E 's/[[:space:]]+$//')
+          {
+            echo "instruction<<__EOF__"
+            echo "$INSTRUCTION"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run the agent-fix workflow on EAS
+        id: dispatch
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ secrets.EAS_PROJECT_ID }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          INSTRUCTION: ${{ steps.parse.outputs.instruction }}
+        run: |
+          # Without pipefail, `| tee` would hide a failed dispatch and the
+          # step would report success.
+          set -o pipefail
+          OUT=$(npx --yes eas-cli@latest workflow:run .eas/workflows/agent-fix.yml \
+            --input "issue_number=${ISSUE_NUMBER}" \
+            --input "instruction=${INSTRUCTION}" \
+            --non-interactive 2>&1 | tee /dev/stderr)
+          RUN_URL=$(printf '%s' "$OUT" | grep -oE 'https://expo\.dev[^[:space:]]*' | head -n 1 || true)
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Report the dispatch on the issue
+        # always(): the dispatch outcome decides which comment is posted.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.dispatch.outcome }}
+          RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+        run: |
+          # The bodies are built with heredocs so every line stays inside
+          # this YAML block scalar (YAML strips the shared indentation).
+          # Same shape as every bot post, and the same "Agent fix" heading
+          # the agent-fix result comment uses.
+          BODY_FILE=$(mktemp)
+          if [ "$OUTCOME" = "success" ]; then
+            RUN_LINE=""
+            if [ -n "$RUN_URL" ]; then
+              RUN_LINE=" — [follow the run](${RUN_URL})"
+            fi
+            cat > "$BODY_FILE" <<BODY
+          ## 🤖 Agent fix
+
+          **Status:** 🔄 Claude Code is reading this issue and writing a fix${RUN_LINE}
+
+          _A fix PR lands here when it is open; the PR then gets a code review, a cloud-simulator verification with evidence, and its own update channel. Posted by the expo-bot bridge for @${{ github.event.comment.user.login }}._
+          BODY
+          else
+            cat > "$BODY_FILE" <<BODY
+          ## 🤖 Agent fix
+
+          ⚠️ **Could not start the fix workflow** — see the
+          [bridge Action logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}), then comment \`@expo-bot\` to retry.
+
+          _Posted by the expo-bot bridge for @${{ github.event.comment.user.login }}._
+          BODY
+          fi
+          gh issue comment "${{ github.event.issue.number }}" --body-file "$BODY_FILE"

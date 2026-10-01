@@ -12,7 +12,7 @@ on:
 
 jobs:
   file_issue:
-    name: File GitHub issue from crash
+    name: 1. File a GitHub issue from the crash
     type: custom
     environment: production
     outputs:
@@ -53,7 +53,7 @@ jobs:
           set-output issue_number "$ISSUE_NUMBER"
 
   dispatch_agent_fix:
-    name: Dispatch agent fix
+    name: 2. Dispatch agent-fix
     needs: [file_issue]
     type: custom
     environment: production
