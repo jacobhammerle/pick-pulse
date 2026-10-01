@@ -12,11 +12,11 @@ on:
 
 jobs:
   fingerprint:
-    name: Fingerprint the project
+    name: 1. Fingerprint the project
     type: fingerprint
 
   find_store_build:
-    name: Find a matching store build
+    name: 2. Find a matching store build
     needs: [fingerprint]
     type: get-build
     params:
@@ -27,7 +27,7 @@ jobs:
       fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
 
   publish_update:
-    name: Ship an OTA update
+    name: 3. Ship an OTA update (JS only)
     needs: [find_store_build]
     if: ${{ needs.find_store_build.outputs.build_id }}
     type: update
@@ -38,7 +38,7 @@ jobs:
       message: ${{ github.commit_message }}
 
   build_production:
-    name: Build a new store build
+    name: 3. Build a new store build (native changed)
     needs: [find_store_build]
     if: ${{ !needs.find_store_build.outputs.build_id }}
     type: build
@@ -48,7 +48,7 @@ jobs:
       profile: production
 
   submit_production:
-    name: Submit the build to TestFlight
+    name: 4. Submit the build to TestFlight
     needs: [build_production]
     type: submit
     params:

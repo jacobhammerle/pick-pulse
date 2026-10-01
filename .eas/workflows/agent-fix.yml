@@ -1,9 +1,21 @@
+# ──────────────────────────────────────────────────────────────────────
+# Agent fix
+#
+# Turns a GitHub issue into a pull request: Claude Code reads the issue,
+# edits the code, a tsc gate must pass, and a PR is opened on
+# fix/issue-N. The PR then gets a code review, a cloud-simulator
+# verification with evidence, and its own pr-N update channel from the
+# PR workflows.
+#
+# Dispatched by testflight-feedback.yml / testflight-crash.yml and by the
+# "@expo-bot [guidance]" issue-comment bridge
+# (.github/workflows/expo-bot-bridge.yml). Run manually:
+#   eas workflow:run .eas/workflows/agent-fix.yml -F issue_number=<N>
+#
+# Env vars required (EAS environment variables, production environment):
+#   CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
+# ──────────────────────────────────────────────────────────────────────
 name: Agent fix
-
-# Turns a GitHub issue into a PR: Claude Code reads the issue, edits the
-# code, verifies tsc passes, and opens a pull request.
-# Dispatched by testflight-feedback.yml / testflight-crash.yml, or run
-# manually: eas workflow:run .eas/workflows/agent-fix.yml -F issue_number=<N>
 
 on:
   workflow_dispatch:
@@ -12,12 +24,22 @@ on:
         description: The GitHub issue number to fix
         type: string
         required: true
+      instruction:
+        description: Optional guidance for the fix agent (text after @expo-bot in the issue comment)
+        type: string
+        default: ""
 
 jobs:
   fix_issue:
-    name: Fix issue and open PR
+    name: 1. Fix the issue and open a PR
     type: custom
     environment: production
+    # Expression interpolation works in job-level env, not step-level. An
+    # env value must be a string: optional contexts get a '' fallback, since
+    # an undefined value fails job validation ("[env.X]: Invalid input").
+    env:
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+      INSTRUCTION: ${{ inputs.instruction || '' }}
     steps:
       - uses: eas/checkout
       - uses: eas/install_node_modules
@@ -25,14 +47,14 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Fix the issue and open a PR
         run: |
-          # env: blocks pass template expressions through as literal text on
-          # EAS right now, so resolve the input in the run script instead.
-          ISSUE_NUMBER="${{ inputs.issue_number }}"
+          set -euo pipefail
           # A numeric test catches every uninterpolated form, not just one
           # particular context name.
           if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
             echo "issue_number input not interpolated; using the newest open issue."
             ISSUE_NUMBER=$(node scripts/agent/gh.mjs latest-issue)
+            export ISSUE_NUMBER
           fi
-          export ISSUE_NUMBER
+          case "$INSTRUCTION" in *'${{'*) INSTRUCTION='' ;; esac
+          export INSTRUCTION
           bash scripts/agent/fix-issue.sh

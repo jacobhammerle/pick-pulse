@@ -9,11 +9,11 @@ on:
 
 jobs:
   fingerprint:
-    name: Fingerprint the project
+    name: 1. Fingerprint the project
     type: fingerprint
 
   find_simulator_build:
-    name: Find a matching simulator build
+    name: 2. Find a matching simulator build
     needs: [fingerprint]
     type: get-build
     params:
@@ -24,7 +24,7 @@ jobs:
       wait_for_in_progress: true
 
   repack_simulator_build:
-    name: Repack the cached simulator build
+    name: 4. Repack the cached simulator build
     needs: [find_simulator_build]
     if: ${{ needs.find_simulator_build.outputs.build_id }}
     type: repack
@@ -34,7 +34,7 @@ jobs:
       js_bundle_only: true
 
   build_simulator_build:
-    name: Build a new simulator app
+    name: 3. Build a new simulator app (native changed)
     needs: [find_simulator_build]
     if: ${{ !needs.find_simulator_build.outputs.build_id }}
     type: build
@@ -43,7 +43,7 @@ jobs:
       profile: preview-simulator
 
   run_maestro_flows:
-    name: Run the generated Maestro flows
+    name: 5. Run the Maestro flows
     after: [repack_simulator_build, build_simulator_build]
     type: maestro
     environment: preview

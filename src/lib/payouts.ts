@@ -1,3 +1,5 @@
+// Payout multipliers, pick limits, and money formatting helpers for entries.
+
 /**
  * Payout multipliers by number of picks in an entry.
  * All picks must hit for the entry to pay out.

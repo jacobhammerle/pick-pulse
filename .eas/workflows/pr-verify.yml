@@ -1,14 +1,51 @@
+# ──────────────────────────────────────────────────────────────────────
+# PR verify
+#
+# Every pull request into main — and every "@expo-bot review [guidance]"
+# comment on one — gets its app checked on a real device:
+#
+#   1. fingerprint: hash the PR's native code
+#   2. get-build:   find a fingerprint-matched simulator binary
+#   3. build:       or build one when the native code changed
+#   4. repack:      inject the PR's JS into the found binary — no shared
+#                   channel, so any number of PRs verify in parallel
+#   5. publish:     publish the PR's JS to its own channel, pr-N, so a
+#                   human can surf to it from the app's ⚙︎ Preview Channel
+#                   screen on any release build
+#   6. verify:      an agent drives the repacked app on an EAS cloud
+#                   simulator (simulator:start --build-id); the evidence
+#                   site goes to EAS Hosting at pr-N-evidence; verdict,
+#                   thumbnails, report, and channel land on the PR as one
+#                   comment
+#
+# Comment-triggered runs only proceed for the repo owner, org members, and
+# collaborators (the gate on job 1; fork PRs never trigger comment runs).
+# Run manually from a checkout of the PR branch:
+#   eas workflow:run .eas/workflows/pr-verify.yml -F pr_number=<N>
+#
+# Env vars required (EAS environment variables, production environment):
+#   EXPO_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_REPO
+# The agent prompt lives in .eas/expo-bot-verify-prompt.md (EAS caps
+# workflow YAML at 16 kB); the logic in scripts/agent/verify-on-simulator.sh.
+# ──────────────────────────────────────────────────────────────────────
 name: PR verify
-
-# Verifies every PR that targets main on a real device: repack (or build)
-# the PR's app, let an agent drive it on an EAS cloud simulator, publish
-# the screenshot evidence to EAS Hosting, ship the PR as an OTA update on
-# channel pr-N, and comment the results on the PR.
 
 on:
   pull_request:
     branches:
       - main
+  pull_request_comment:
+    if: ${{ startsWith(github.event.comment.body, '@expo-bot review') || github.event.comment.body == '@expo-bot' }}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: The pull request number to verify
+        type: string
+        required: true
+      instruction:
+        description: Optional reviewer guidance for the verification agent
+        type: string
+        default: ""
 
 concurrency:
   cancel_in_progress: true
@@ -16,11 +53,15 @@ concurrency:
 
 jobs:
   fingerprint:
-    name: Fingerprint the project
+    name: 1. Fingerprint the project
     type: fingerprint
+    # Gate: a comment-triggered run proceeds only for trusted authors. Push
+    # and manual runs have no comment and pass. Every other job needs this
+    # one, so a skipped gate skips the whole run.
+    if: ${{ !github.event.comment.body || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR' }}
 
   find_simulator_build:
-    name: Find a matching simulator build
+    name: 2. Find a matching simulator build
     needs: [fingerprint]
     type: get-build
     params:
@@ -30,8 +71,19 @@ jobs:
       fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
       wait_for_in_progress: true
 
+  build_simulator_build:
+    name: 3. Build a new simulator app (native changed)
+    needs: [find_simulator_build]
+    if: ${{ !needs.find_simulator_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview-simulator
+
+  # A found binary carries the JS it was built with; repack swaps in the
+  # PR's JS. A fresh build (above) already has it, so no repack then.
   repack_simulator_build:
-    name: Repack the cached simulator build
+    name: 4. Repack the cached simulator build with the PR's JS
     needs: [find_simulator_build]
     if: ${{ needs.find_simulator_build.outputs.build_id }}
     type: repack
@@ -40,82 +92,86 @@ jobs:
       profile: preview-simulator
       js_bundle_only: true
 
-  build_simulator_build:
-    name: Build a new simulator app
-    needs: [find_simulator_build]
-    if: ${{ !needs.find_simulator_build.outputs.build_id }}
-    type: build
+  # The human-facing copy: the same JS on a channel named after the PR.
+  # eas update creates the channel and branch on first publish.
+  publish_pr_update:
+    name: 5. Publish the PR's JS to channel pr-N
+    needs: [fingerprint]
+    type: update
+    environment: preview
     params:
       platform: ios
-      profile: preview-simulator
+      channel: pr-${{ inputs.pr_number || github.event.pull_request.number }}
+      message: PR #${{ inputs.pr_number || github.event.pull_request.number }} preview
 
   verify_on_simulator:
-    name: Verify on an EAS cloud simulator
-    after: [repack_simulator_build, build_simulator_build]
+    name: 6. Verify on an EAS cloud simulator
+    needs: [fingerprint]
+    # `after`, not `needs`, on the publish job: a failed publish must not
+    # silently skip verification (a skipped job posts no comment).
+    after: [repack_simulator_build, build_simulator_build, publish_pr_update]
     type: custom
-    environment: preview
+    environment: production
+    # Expression interpolation works in job-level env, not step-level. An
+    # env value must be a string: optional contexts get a '' fallback, since
+    # an undefined value fails job validation ("[env.X]: Invalid input").
+    env:
+      BUILD_ID: ${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}
+      BUILD_STATUS: ${{ after.build_simulator_build.status }}
+      REPACK_STATUS: ${{ after.repack_simulator_build.status }}
+      PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+      # The raw comment on comment runs; the script strips the prefix.
+      INSTRUCTION: ${{ inputs.instruction || github.event.comment.body || '' }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+      BASE_REPO: ${{ github.event.pull_request.base.repo.full_name || '' }}
+      UPDATE_CHANNEL: pr-${{ inputs.pr_number || github.event.pull_request.number }}
+      UPDATE_GROUP_ID: ${{ after.publish_pr_update.outputs.first_update_group_id || '' }}
+      PUBLISH_STATUS: ${{ after.publish_pr_update.status }}
     outputs:
       evidence_url: ${{ steps.verify.outputs.evidence_url }}
       verdict: ${{ steps.verify.outputs.verdict }}
+      verdict_shown: ${{ steps.verify.outputs.verdict_shown }}
+      update_channel: ${{ steps.verify.outputs.update_channel }}
+      update_url: ${{ steps.verify.outputs.update_url }}
     steps:
       - uses: eas/checkout
       - uses: eas/install_node_modules
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
-      - name: Drive the app and collect evidence
-        id: verify
+      - id: verify
+        name: Drive the app, collect evidence, comment
         run: |
-          # Public-repo guard: this step runs scripts from the PR's checked
-          # out branch with this project's secrets in the environment. EAS
-          # does not document how fork PRs are handled, so refuse any PR
-          # whose head repo is detectably not the base repo. Both names come
-          # from the same pull_request webhook payload; github.repository is
-          # optional in the EAS context and arrives empty, which made this
-          # guard reject same-repo PRs. When either name is empty or
-          # uninterpolated we cannot tell, so continue (same-repo PRs are the
-          # normal case and blocking them would break the pipeline).
-          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
-          BASE_REPO="${{ github.event.pull_request.base.repo.full_name }}"
-          case "$HEAD_REPO$BASE_REPO" in *'${{'*) HEAD_REPO=''; BASE_REPO='' ;; esac
-          if [ -z "$HEAD_REPO" ] || [ -z "$BASE_REPO" ]; then
-            echo "Repo names unknown; continuing."
-          elif [ "$HEAD_REPO" != "$BASE_REPO" ]; then
-            echo "PR head is fork '$HEAD_REPO'; refusing to run agent scripts with secrets."
+          set -euo pipefail
+          # A numeric test catches every uninterpolated form.
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "PR number not interpolated ('$PR_NUMBER'); cannot continue."
             exit 1
           fi
-          # env: blocks pass template expressions through as literal text on
-          # EAS right now, so resolve the context in the run script instead.
-          # The PR title is free text, so read it via a quoted heredoc.
-          export BUILD_ID="${{ after.repack_simulator_build.outputs.build_id || after.build_simulator_build.outputs.build_id }}"
-          export PR_NUMBER="${{ github.event.pull_request.number }}"
-          PR_TITLE=$(cat <<'PR_TITLE_EOF'
-          ${{ github.event.pull_request.title }}
-          PR_TITLE_EOF
-          )
-          export PR_TITLE
           bash scripts/agent/verify-on-simulator.sh
 
-  publish_pr_update:
-    name: Publish an update to the pr channel
+  blocked:
+    name: 7. Verification failed
+    type: doc
+    after: [verify_on_simulator]
+    if: ${{ after.verify_on_simulator.status == 'failure' }}
+    params:
+      md: |
+        # 🚫 Verification did not complete
+
+        The run failed before a clean verdict and evidence publish. A status
+        comment was posted on the PR; details are in the
+        "6. Verify on an EAS cloud simulator" job logs.
+
+  report:
+    name: 7. Verification report
+    type: doc
     needs: [verify_on_simulator]
-    type: update
-    environment: preview
     params:
-      platform: ios
-      channel: pr-${{ github.event.pull_request.number }}
-      message: PR #${{ github.event.pull_request.number }} preview
+      md: |
+        # 🤖 Agent verification for PR #${{ inputs.pr_number || github.event.pull_request.number }}
 
-  comment_on_pr:
-    name: Comment the results on the PR
-    needs: [verify_on_simulator, publish_pr_update]
-    type: github-comment
-    params:
-      payload: |
-        ## 🤖 Agent verification
+        > ${{ needs.verify_on_simulator.outputs.verdict_shown }}
 
-        **Verdict:** ${{ needs.verify_on_simulator.outputs.verdict }}
-
-        - 🖼️ **Evidence site** — screenshots from the simulator run: ${{ needs.verify_on_simulator.outputs.evidence_url }}
-        - 📲 **Preview channel** — `pr-${{ github.event.pull_request.number }}`: open PickPulse → Settings, enter the channel name, tap **Switch channel** to try this PR on your phone
-
-        _Posted by the pr-verify EAS workflow._
+        - 📡 **Channel**: `${{ needs.verify_on_simulator.outputs.update_channel }}` — open PickPulse → ⚙︎ → Switch channel ([update group](${{ needs.verify_on_simulator.outputs.update_url }}))
+        - 🖼️ **[Evidence site](${{ needs.verify_on_simulator.outputs.evidence_url }})**: screenshots, the agent's timeline, and performance charts from the simulator run
+        - 💬 The verdict and the code review are comments on the PR.
