@@ -46,10 +46,11 @@ evidence_thumbs() { evidence_tool thumbs "$1" "$2" --max 4; }
 #   bot_instruction "@expo-bot review check the slip"  -> "check the slip"
 #   bot_instruction "@expo-bot"                        -> ""
 #   bot_instruction "check the slip"                   -> "check the slip"
-#   bot_instruction "@expo-bot changes the bar" change -> "changes the bar"
-# The keyword only strips as a whole word.
+#   bot_instruction "@expo-bot change the bar" ""     -> "change the bar"
+# The keyword only strips as a whole word. "change" is never a keyword: a
+# change request is a sentence, and "change the bar to red" must survive.
 bot_instruction() {
-  local keyword="${2:-review|qa|preview|change}"
+  local keyword="${2:-review|qa|preview}"
   printf '%s' "${1:-}" | head -n 1 \
     | sed -E "s/^@expo-bot[[:space:]]*((${keyword})([[:space:]]+|$))?//" \
     | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'

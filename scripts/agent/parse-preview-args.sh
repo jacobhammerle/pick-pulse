@@ -5,7 +5,7 @@
 # always an iOS simulator; "ios" is accepted and ignored.
 #
 #   @expo-bot preview                         30 min, runner default device
-#   @expo-bot preview 45                      45 min
+#   @expo-bot preview 45                      45 min (capped at 120)
 #   @expo-bot preview iPhone 16 Pro           device "iPhone 16 Pro"
 #   @expo-bot preview 45 iPhone 16 Pro        both
 #   @expo-bot preview iPhone 16 Pro for 45    both, natural order
@@ -55,9 +55,12 @@ for w in ${WORDS[@]+"${WORDS[@]}"}; do
   DEVICE="${DEVICE:+$DEVICE }$w"
 done
 
+MAX_DURATION="${PREVIEW_MAX_MINUTES:-120}"
 [ -n "$DURATION" ] || DURATION="$DEFAULT_DURATION"
-# A zero-minute session is meaningless; treat it as the default.
+# A zero-minute session is meaningless; treat it as the default. A session
+# longer than the cap is clamped: it bills until it stops.
 [ "$DURATION" -gt 0 ] 2>/dev/null || DURATION="$DEFAULT_DURATION"
+[ "$DURATION" -le "$MAX_DURATION" ] 2>/dev/null || DURATION="$MAX_DURATION"
 
 echo "duration=$DURATION"
 echo "device=$DEVICE"

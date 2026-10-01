@@ -84,6 +84,9 @@ fi
 git commit -m "fix: resolve issue #${ISSUE_NUMBER} - ${ISSUE_TITLE}"
 
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
+# The branch is bot-owned: a re-run of the issue (a second @expo-bot
+# comment) replaces the earlier attempt rather than failing on a
+# non-fast-forward push. Branch off fix/issue-N if you want to keep work.
 git push --force "$REMOTE" "HEAD:${BRANCH}"
 
 # Same shape as every bot post: "## 🤖 <stage>", bold label lines, then

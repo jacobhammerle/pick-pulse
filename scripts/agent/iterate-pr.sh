@@ -16,7 +16,8 @@ for v in GITHUB_TOKEN GH_REPO CLAUDE_CODE_OAUTH_TOKEN; do
   fi
 done
 
-INSTRUCTION=$(bot_instruction "${INSTRUCTION:-}" change)
+# Only the "@expo-bot" prefix is stripped: the rest is the request as written.
+INSTRUCTION=$(bot_instruction "${INSTRUCTION:-}" "")
 if [ -z "$INSTRUCTION" ]; then
   node scripts/agent/gh.mjs comment "$PR_NUMBER" "## 🤖 Agent iteration
 

@@ -45,10 +45,16 @@ fi
 RETRY_CMD="@expo-bot preview ${DURATION_MINUTES}"
 if [ -n "$DEVICE" ]; then RETRY_CMD="$RETRY_CMD $DEVICE"; fi
 
-# A run that dies before commenting would leave the PR silent.
+# A run that dies before commenting would leave the PR silent, and a
+# session that never went live would bill until its max duration; the trap
+# covers both. A session whose link was posted is left running on purpose.
 COMMENT_POSTED=""
+SESSION_ID=""
 cleanup() {
   code=$?
+  if [ "$code" -ne 0 ] && [ -z "$COMMENT_POSTED" ] && [ -n "$SESSION_ID" ]; then
+    npx --yes eas-cli@latest simulator:stop --id "$SESSION_ID" --non-interactive >/dev/null 2>&1 || true
+  fi
   if [ "$code" -ne 0 ] && [ -z "$COMMENT_POSTED" ]; then
     node scripts/agent/gh.mjs comment "$PR_NUMBER" "## 🤖 Live preview
 
