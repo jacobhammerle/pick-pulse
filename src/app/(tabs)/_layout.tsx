@@ -24,9 +24,7 @@ export default function TabsLayout() {
           title: 'Home',
           headerTitle: 'PickPulse',
           tabBarButtonTestID: 'tab-home',
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 20 }}>⌂</Text>
-          ),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏠</Text>,
         }}
       />
       <Tabs.Screen
@@ -35,9 +33,7 @@ export default function TabsLayout() {
           title: 'Settings',
           headerTitle: 'Preview Channel',
           tabBarButtonTestID: 'tab-settings',
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 20 }}>⚙︎</Text>
-          ),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text>,
         }}
       />
     </Tabs>
