@@ -73,7 +73,7 @@ Then **talk to the bot** by commenting on the PR:
 | --- | --- |
 | `@expo-bot <change>` | An agent applies the change to the PR branch and pushes. Review and verify re-run on the new commit. Example: `@expo-bot make the slip bar purple` |
 | `@expo-bot review [guidance]` | Review and verify again. Guidance is binding: `@expo-bot review the slip must show a 3x multiplier for two picks` makes that an acceptance criterion |
-| `@expo-bot preview [minutes] [device]` | A cloud iOS simulator running this PR, in your browser. `@expo-bot preview`, `@expo-bot preview 45`, `@expo-bot preview iPhone 16 Pro for 45` |
+| `@expo-bot preview [minutes] [device]` | A cloud iOS simulator running this PR, in your browser. `@expo-bot preview`, `@expo-bot preview 45`, `@expo-bot preview iPhone 17 Pro for 45` |
 | `@expo-bot qa [guidance]` | A QA agent explores what the PR changed; a second agent writes a Maestro regression flow from the session and suggests it on the PR |
 
 On an **issue**, `@expo-bot [guidance]` sends it to the fix agent, which
@@ -89,7 +89,7 @@ run by hand from a checkout of the branch in question:
 npx eas-cli@latest workflow:run .eas/workflows/pr-verify.yml -F pr_number=12
 npx eas-cli@latest workflow:run .eas/workflows/code-review.yml -F pr_number=12
 npx eas-cli@latest workflow:run .eas/workflows/agent-iterate.yml -F pr_number=12 -F instruction="make the slip bar purple"
-npx eas-cli@latest workflow:run .eas/workflows/pr-live-preview.yml -F pr_number=12 -F device="iPhone 16 Pro"
+npx eas-cli@latest workflow:run .eas/workflows/pr-live-preview.yml -F pr_number=12 -F device="iPhone 17 Pro"
 npx eas-cli@latest workflow:run .eas/workflows/qa-to-maestro.yml -F pr_number=12
 npx eas-cli@latest workflow:run .eas/workflows/agent-fix.yml -F issue_number=7
 ```
@@ -210,9 +210,11 @@ capped at the requested length (30 minutes by default), and comments
 **🤖 Live preview** with the browser link, the session id to stop it
 early, and the retry command. [parse-preview-args.sh](scripts/agent/parse-preview-args.sh)
 reads the minutes and the device name in any order, so
-`@expo-bot preview iPhone 16 Pro for 45` works. The device name goes
-straight to `eas simulator:start --device`; the runner does not reject
-an unknown name, so check the preview.
+`@expo-bot preview iPhone 17 Pro for 45` works. The device name goes
+straight to `eas simulator:start --device`. Use a device from the runner's
+current iOS runtime (`iPhone 17 Pro`, `iPhone 17`); when the runner does
+not have the device, the session falls back to the default device and the
+comment says so.
 
 ### QA: an exploratory test becomes a Maestro flow
 

@@ -6,15 +6,15 @@
 #
 #   @expo-bot preview                         30 min, runner default device
 #   @expo-bot preview 45                      45 min (capped at 120)
-#   @expo-bot preview iPhone 16 Pro           device "iPhone 16 Pro"
-#   @expo-bot preview 45 iPhone 16 Pro        both
-#   @expo-bot preview iPhone 16 Pro for 45    both, natural order
+#   @expo-bot preview iPhone 17 Pro           device "iPhone 17 Pro"
+#   @expo-bot preview 45 iPhone 17 Pro        both
+#   @expo-bot preview iPhone 17 Pro for 45    both, natural order
 #   @expo-bot preview iPad Pro 13-inch 20m    all of it
 #
 # Rules, in order, per word:
 #   - a bare number is the duration while no device word has been read yet;
 #     "for N", "Nm", "Nmin", or "N minutes" is the duration anywhere
-#     (so the 16 in "iPhone 16 Pro" stays part of the device name)
+#     (so the 17 in "iPhone 17 Pro" stays part of the device name)
 #   - filler words "ios", "on", "for", "device", "minute(s)", "min(s)" are dropped
 #   - every other word joins the device name
 #
@@ -28,7 +28,7 @@ DURATION=""
 DEVICE=""
 EXPECT_DURATION=""
 
-# Normalize quotes and commas so `preview "iPhone 16 Pro", 45` also works,
+# Normalize quotes and commas so `preview "iPhone 17 Pro", 45` also works,
 # and glue "10 minutes" into "10m" so the number is never read as part of
 # a device name that came before it.
 TEXT=$(printf '%s' "$TEXT" | tr '",\047' '   ' \

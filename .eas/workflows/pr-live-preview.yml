@@ -7,8 +7,8 @@
 #
 #   @expo-bot preview                     runner default device, 30 min
 #   @expo-bot preview 45                  45-minute session
-#   @expo-bot preview iPhone 16 Pro       a specific iOS Simulator device
-#   @expo-bot preview iPhone 16 Pro for 45
+#   @expo-bot preview iPhone 17 Pro       a specific iOS Simulator device
+#   @expo-bot preview iPhone 17 Pro for 45
 #
 #   1. fingerprint: hash the PR's native code
 #   2. get-build:   find a fingerprint-matched simulator binary
@@ -17,13 +17,13 @@
 #   5. session:     boot the device (simulator:start --build-id), comment
 #                   the preview link
 #
-# The device name goes straight to `eas simulator:start --device`. The
-# runner does not reject an unknown name, so the comment reports the
-# requested device. Comment-triggered runs only proceed for the repo
+# The device name goes straight to `eas simulator:start --device`. A name
+# the runner does not have errors the session, so the script falls back to
+# the default device and says so. Comment-triggered runs only proceed for the repo
 # owner, org members, and collaborators (the gate on job 1). Run manually
 # from a checkout of the PR branch:
 #   eas workflow:run .eas/workflows/pr-live-preview.yml -F pr_number=<N> \
-#     -F duration_minutes=45 -F device="iPhone 16 Pro"
+#     -F duration_minutes=45 -F device="iPhone 17 Pro"
 #
 # Env vars required (EAS environment variables, production environment):
 #   EXPO_TOKEN, GITHUB_TOKEN, GH_REPO
@@ -53,7 +53,7 @@ on:
         type: string
         default: "30"
       device:
-        description: iOS Simulator device name, e.g. "iPhone 16 Pro". Empty picks the runner's default.
+        description: iOS Simulator device name, e.g. "iPhone 17 Pro". Empty picks the runner's default.
         type: string
         default: ""
 

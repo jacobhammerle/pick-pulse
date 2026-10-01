@@ -50,7 +50,8 @@ evidence_thumbs() { evidence_tool thumbs "$1" "$2" --max 4; }
 # The keyword only strips as a whole word. "change" is never a keyword: a
 # change request is a sentence, and "change the bar to red" must survive.
 bot_instruction() {
-  local keyword="${2:-review|qa|preview}"
+  # ${2-...}: an explicit "" means "no keyword", only an omitted $2 defaults.
+  local keyword="${2-review|qa|preview}"
   printf '%s' "${1:-}" | head -n 1 \
     | sed -E "s/^@expo-bot[[:space:]]*((${keyword})([[:space:]]+|$))?//" \
     | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'

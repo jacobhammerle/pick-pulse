@@ -9,7 +9,7 @@
 #                          scripts/agent/parse-preview-args.sh into the
 #                          duration and device. When empty, the two below apply.
 #           DURATION_MINUTES (default 30), DEVICE (an iOS Simulator device
-#                          name such as "iPhone 16 Pro"; empty = runner default)
+#                          name such as "iPhone 17 Pro"; empty = runner default)
 #           BUILD_STATUS, REPACK_STATUS (upstream job statuses)
 #           AGENT_DEVICE_VERSION (default latest)
 set -euo pipefail
@@ -109,7 +109,29 @@ if [ -n "$DEVICE" ]; then
   START_ARGS+=(--device "$DEVICE")
 fi
 echo "Starting a $DURATION_MINUTES-minute $DEVICE_LABEL session with build $BUILD_ID"
-START_JSON=$(npx --yes eas-cli@latest simulator:start "${START_ARGS[@]}")
+# A device name the runner does not have makes the session error within
+# seconds (seen with "iPhone 16 Pro" on 2026-10-01, when the runtime had
+# moved on to iPhone 17 devices). Rather than fail the
+# whole preview, fall back to the runner's default device once and say so
+# in the comment.
+DEVICE_NOTE=""
+if ! START_JSON=$(npx --yes eas-cli@latest simulator:start "${START_ARGS[@]}"); then
+  if [ -z "$DEVICE" ]; then
+    echo "simulator:start failed."
+    exit 1
+  fi
+  echo "The session errored with --device \"$DEVICE\"; retrying with the runner's default device."
+  DEVICE_NOTE="- 📱 **Device** — \`$DEVICE\` is not available on the runner, so this is the default device
+"
+  DEVICE=""
+  DEVICE_LABEL="iOS simulator"
+  START_ARGS=(--platform ios --type agent-device
+    --package-version "$AGENT_DEVICE_VERSION"
+    --build-id "$BUILD_ID"
+    --max-duration-minutes "$DURATION_MINUTES"
+    --name "$SESSION_NAME" --json --non-interactive)
+  START_JSON=$(npx --yes eas-cli@latest simulator:start "${START_ARGS[@]}")
+fi
 SESSION_ID=$(printf '%s' "$START_JSON" | json_field id)
 echo "Session $SESSION_ID created; waiting for it to come alive..."
 
@@ -128,9 +150,9 @@ for i in $(seq 1 64); do
 done
 [ -n "$PREVIEW_URL" ] || { echo "Session not ready in time."; exit 1; }
 
-DEVICE_LINE=""
+DEVICE_LINE="$DEVICE_NOTE"
 if [ -n "$DEVICE" ]; then
-  DEVICE_LINE="- 📱 **Device** — requested \`$DEVICE\`; an unknown name is not rejected, so check the device in the preview
+  DEVICE_LINE="- 📱 **Device** — \`$DEVICE\`, as requested
 "
 fi
 
@@ -141,7 +163,7 @@ node scripts/agent/gh.mjs comment "$PR_NUMBER" "## 🤖 Live preview
 This PR's app is installed and running on an EAS cloud $DEVICE_LABEL.
 
 ${DEVICE_LINE}- ⏱️ **Session length** — stops by itself after $DURATION_MINUTES minutes; stop it early with \`eas simulator:stop --id $SESSION_ID\`
-- 🔁 **Fresh session** — comment \`@expo-bot preview [minutes] [device]\` again, e.g. \`@expo-bot preview iPhone 16 Pro for 45\`
+- 🔁 **Fresh session** — comment \`@expo-bot preview [minutes] [device]\` again, e.g. \`@expo-bot preview iPhone 17 Pro for 45\`
 
 _Posted by the pr-live-preview EAS workflow._"
 COMMENT_POSTED=1
