@@ -10,7 +10,8 @@
 #           HEAD_REPO, BASE_REPO (fork guard; empty when unknown)
 #           UPDATE_CHANNEL (channel the workflow published the PR's JS to;
 #           default pr-<PR_NUMBER>), UPDATE_GROUP_ID (that publish's update
-#           group, for a deep link) — echoed back as the channel to surf to
+#           group, for a deep link), PUBLISH_STATUS (that job's status) —
+#           echoed back as the channel to surf to
 #           AGENT_DEVICE_VERSION (default latest)
 set -euo pipefail
 
@@ -197,6 +198,9 @@ echo "Channel to surf to: $UPDATE_CHANNEL ${UPDATE_URL:+($UPDATE_URL)}"
 CHANNEL_LINE="- 📡 **Channel** — \`${UPDATE_CHANNEL}\`: open PickPulse → ⚙︎ → enter the channel name → **Switch channel** to try this PR on your phone"
 if [ -n "$UPDATE_URL" ]; then
   CHANNEL_LINE="${CHANNEL_LINE} ([update](${UPDATE_URL}))"
+fi
+if [ "${PUBLISH_STATUS:-}" = "failure" ]; then
+  CHANNEL_LINE="- 📡 **Channel** — ⚠️ publishing this PR's update to \`${UPDATE_CHANNEL}\` failed; see the \"5. Publish\" job logs. The verdict below is from the repacked binary and stands on its own"
 fi
 
 # Same shape as every bot post: "## 🤖 <stage>", a verdict line, a short
