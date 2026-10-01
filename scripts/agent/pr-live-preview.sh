@@ -95,60 +95,70 @@ json_field() { # json_field <path> — reads JSON on stdin, prints the field
 PR_TITLE=$(node scripts/agent/gh.mjs get-pr "$PR_NUMBER" | json_field title)
 SESSION_NAME=$(printf 'PR #%s preview: %s' "$PR_NUMBER" "$PR_TITLE" | cut -c1-50)
 
+# start_session <simulator:start args...>: create the session and wait for
+# it to come alive. Sets SESSION_ID as soon as the id is known (so the trap
+# can stop it) and PREVIEW_URL once the session is IN_PROGRESS. Returns 1
+# when the session errors, stops, or is not ready in time.
+start_session() {
+  local out status i
+  SESSION_ID=""
+  PREVIEW_URL=""
+  # The JSON (success) carries connection tokens, so it is never echoed;
+  # the human-readable failure output names the session id.
+  out=$(npx --yes eas-cli@latest simulator:start "$@" 2>&1) || true
+  SESSION_ID=$(printf '%s' "$out" | json_field id 2>/dev/null \
+    || printf '%s' "$out" | grep -oE 'id: [0-9a-f-]{20,}' | head -n 1 | cut -d' ' -f2 || true)
+  if [ -z "$SESSION_ID" ]; then
+    printf '%s\n' "$out" | grep -v -i token | tail -n 5
+    return 1
+  fi
+  echo "Session $SESSION_ID created; waiting for it to come alive..."
+  for i in $(seq 1 64); do
+    out=$(npx --yes eas-cli@latest simulator:get --id "$SESSION_ID" --json --non-interactive 2>/dev/null || true)
+    status=$(printf '%s' "$out" | json_field status || true)
+    if [ "$status" = "IN_PROGRESS" ]; then
+      PREVIEW_URL=$(printf '%s' "$out" | json_field remoteConfig.webPreviewUrl || true)
+      [ -n "$PREVIEW_URL" ] && return 0
+    fi
+    case "$status" in
+      STOPPED|ERRORED) echo "Simulator session $SESSION_ID failed to boot ($status)."; return 1 ;;
+    esac
+    sleep 15
+  done
+  echo "Session $SESSION_ID not ready in time."
+  return 1
+}
+
 # --build-id installs and launches the binary before the session is
 # ready — no artifact download, upload, or manual launch needed.
 # --device is only sent when requested; the runner otherwise picks one.
-# The runner does not reject an unknown device name (the session still
-# boots), so the comment reports the name as requested.
 START_ARGS=(--platform ios --type agent-device
   --package-version "$AGENT_DEVICE_VERSION"
   --build-id "$BUILD_ID"
   --max-duration-minutes "$DURATION_MINUTES"
   --name "$SESSION_NAME" --json --non-interactive)
-if [ -n "$DEVICE" ]; then
-  START_ARGS+=(--device "$DEVICE")
-fi
 echo "Starting a $DURATION_MINUTES-minute $DEVICE_LABEL session with build $BUILD_ID"
-# A device name the runner does not have makes the session error within
-# seconds (seen with "iPhone 16 Pro" on 2026-10-01, when the runtime had
-# moved on to iPhone 17 devices). Rather than fail the
-# whole preview, fall back to the runner's default device once and say so
-# in the comment.
 DEVICE_NOTE=""
-if ! START_JSON=$(npx --yes eas-cli@latest simulator:start "${START_ARGS[@]}"); then
-  if [ -z "$DEVICE" ]; then
-    echo "simulator:start failed."
-    exit 1
-  fi
-  echo "The session errored with --device \"$DEVICE\"; retrying with the runner's default device."
-  DEVICE_NOTE="- 📱 **Device** — \`$DEVICE\` is not available on the runner, so this is the default device
+if [ -n "$DEVICE" ]; then
+  # A device name the runner does not have makes the session error within
+  # seconds (seen with "iPhone 16 Pro" on 2026-10-01, when the runtime had
+  # moved on to iPhone 17 devices). Rather than fail the whole preview,
+  # stop the dead session, fall back to the runner's default device once,
+  # and say so in the comment.
+  if ! start_session "${START_ARGS[@]}" --device "$DEVICE"; then
+    if [ -n "$SESSION_ID" ]; then
+      npx --yes eas-cli@latest simulator:stop --id "$SESSION_ID" --non-interactive >/dev/null 2>&1 || true
+    fi
+    echo "The session did not come alive with --device \"$DEVICE\"; retrying with the runner's default device."
+    DEVICE_NOTE="- 📱 **Device** — \`$DEVICE\` is not available on the runner, so this is the default device
 "
-  DEVICE=""
-  DEVICE_LABEL="iOS simulator"
-  START_ARGS=(--platform ios --type agent-device
-    --package-version "$AGENT_DEVICE_VERSION"
-    --build-id "$BUILD_ID"
-    --max-duration-minutes "$DURATION_MINUTES"
-    --name "$SESSION_NAME" --json --non-interactive)
-  START_JSON=$(npx --yes eas-cli@latest simulator:start "${START_ARGS[@]}")
-fi
-SESSION_ID=$(printf '%s' "$START_JSON" | json_field id)
-echo "Session $SESSION_ID created; waiting for it to come alive..."
-
-PREVIEW_URL=""
-for i in $(seq 1 64); do
-  S=$(npx --yes eas-cli@latest simulator:get --id "$SESSION_ID" --json --non-interactive 2>/dev/null || true)
-  STATUS=$(printf '%s' "$S" | json_field status || true)
-  if [ "$STATUS" = "IN_PROGRESS" ]; then
-    PREVIEW_URL=$(printf '%s' "$S" | json_field remoteConfig.webPreviewUrl || true)
-    [ -n "$PREVIEW_URL" ] && break
+    DEVICE=""
+    DEVICE_LABEL="iOS simulator"
+    start_session "${START_ARGS[@]}" || exit 1
   fi
-  case "$STATUS" in
-    STOPPED|ERRORED) echo "Simulator session failed to boot ($STATUS)."; exit 1 ;;
-  esac
-  sleep 15
-done
-[ -n "$PREVIEW_URL" ] || { echo "Session not ready in time."; exit 1; }
+else
+  start_session "${START_ARGS[@]}" || exit 1
+fi
 
 DEVICE_LINE="$DEVICE_NOTE"
 if [ -n "$DEVICE" ]; then

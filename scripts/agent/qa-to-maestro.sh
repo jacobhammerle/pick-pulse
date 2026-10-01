@@ -64,12 +64,31 @@ else
   SLUG=$(echo "$FEATURE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-40)
 fi
 
+# pr_comment "<body>": post on the PR in PR mode (needs GITHUB_TOKEN); a
+# no-op in feature mode or locally without a token.
+pr_comment() {
+  if [ -n "$PR_NUMBER" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+    node scripts/agent/gh.mjs comment "$PR_NUMBER" "$1" || true
+  fi
+}
+
+# The session bills until stopped, and a run that dies before the
+# workflow posts the flow would leave the PR silent; the trap covers both.
 SESSION_STARTED=""
+COMMENT_POSTED=""
 cleanup() {
+  code=$?
   if [ -n "$SESSION_STARTED" ]; then
     npx --yes eas-cli@latest simulator:stop --non-interactive || true
   fi
   printf '# managed by eas-cli\n' > .env.eas-simulator
+  if [ "$code" -ne 0 ] && [ -z "$COMMENT_POSTED" ]; then
+    pr_comment "## 🧪 Suggested Maestro regression test
+
+⚠️ **The QA run errored before a flow was written** — see the qa-to-maestro run logs on EAS, then comment \`@expo-bot qa\` to retry.
+
+_Posted by the qa-to-maestro EAS workflow._"
+  fi
 }
 trap cleanup EXIT
 
@@ -95,18 +114,30 @@ if [ -n "$BUILD_ID" ] && ! [[ "$BUILD_ID" =~ $UUID_RE ]]; then
   BUILD_ID=""
 fi
 if [ -z "$BUILD_ID" ] && [ -n "$PR_SHA" ]; then
-  BUILD_ID=$(npx --yes eas-cli@latest build:list \
-    --platform ios --build-profile preview-simulator \
-    --status finished --git-commit-hash "$PR_SHA" \
-    --limit 1 --json --non-interactive \
-    | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-        try{console.log(JSON.parse(d)[0]?.id ?? '')}catch{console.log('')}})")
+  # pr-verify repacks a build for every push to the PR. Right after a push
+  # (or an "@expo-bot qa" typed straight after one) that repack is still
+  # running, so wait for it: up to 20 × 30 s.
+  for attempt in $(seq 1 20); do
+    BUILD_ID=$(npx --yes eas-cli@latest build:list \
+      --platform ios --build-profile preview-simulator \
+      --status finished --git-commit-hash "$PR_SHA" \
+      --limit 1 --json --non-interactive \
+      | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+          try{console.log(JSON.parse(d)[0]?.id ?? '')}catch{console.log('')}})")
+    [ -n "$BUILD_ID" ] && break
+    echo "No finished build for PR head ${PR_SHA} yet (attempt ${attempt}/20); waiting 30 s for pr-verify..."
+    sleep 30
+  done
   if [ -z "$BUILD_ID" ]; then
     # Testing a build without the PR's changes would produce a bogus
     # flow, so fail clearly instead of falling back.
     echo "ERROR: no finished build found for PR head ${PR_SHA}." >&2
-    echo "The PR's pr-verify build may still be running. Wait for it to" >&2
-    echo "finish, or pass BUILD_ID=<id> from the PR's pr-verify run." >&2
+    pr_comment "## 🧪 Suggested Maestro regression test
+
+⚠️ **No build for this PR's latest commit yet** — pr-verify has not finished repacking it. Wait for the **Agent verification** comment, then comment \`@expo-bot qa\` again.
+
+_Posted by the qa-to-maestro EAS workflow._"
+    COMMENT_POSTED=1
     exit 1
   fi
 fi
@@ -293,6 +324,8 @@ if [ -n "$PR_NUMBER" ]; then
   echo "$PR_NUMBER" > "$QA_DIR/pr-number.txt"
 fi
 
+# The workflow step after this one posts the flow on the PR.
+COMMENT_POSTED=1
 echo ""
 echo "==> Done."
 echo "    Session log:   $QA_LOG_FILE"
